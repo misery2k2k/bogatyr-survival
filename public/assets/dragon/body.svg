@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-166 -186 262 194" width="262" height="194">
+  <defs>
+    <linearGradient id="sk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#63b347"/><stop offset="1" stop-color="#2d7431"/>
+    </linearGradient>
+    <linearGradient id="skd" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3f8a36"/><stop offset="1" stop-color="#1f5525"/>
+    </linearGradient>
+    <linearGradient id="bl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef1a6"/><stop offset="1" stop-color="#bcc35a"/>
+    </linearGradient>
+  </defs>
+  <!-- хвост -->
+  <path d="M-50,-102 C-96,-106 -120,-82 -138,-62 L-128,-52 C-110,-68 -92,-64 -50,-62 Z" fill="url(#sk)" stroke="#1d3a14" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M-136,-62 L-152,-88 L-162,-56 L-128,-46 Z" fill="#e7772c" stroke="#1d3a14" stroke-width="3.5" stroke-linejoin="round"/>
+  <!-- задняя лапа -->
+  <ellipse cx="-36" cy="-50" rx="27" ry="31" fill="url(#skd)" stroke="#1d3a14" stroke-width="4"/>
+  <path d="M-52,-34 L-50,-6 L-62,-2 Q-66,5 -55,5 L-22,5 Q-14,3 -21,-5 L-24,-32 Z" fill="url(#skd)" stroke="#1d3a14" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M-24,5 L-14,6 L-22,-2 Z M-36,5 L-28,7 L-34,-1 Z" fill="#f4ead0" stroke="#1d3a14" stroke-width="2" stroke-linejoin="round"/>
+  <!-- туловище -->
+  <path d="M-76,-110 C-80,-150 -32,-168 18,-162 C60,-156 84,-132 80,-100 C76,-66 52,-42 0,-40 C-46,-40 -73,-70 -76,-110 Z" fill="url(#sk)" stroke="#1d3a14" stroke-width="4.5" stroke-linejoin="round"/>
+  <!-- брюхо -->
+  <path d="M72,-118 C74,-80 52,-50 2,-46 C-30,-46 -50,-58 -58,-72 C-36,-62 -10,-58 14,-62 C44,-70 64,-90 72,-118 Z" fill="url(#bl)" stroke="#1d3a14" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M-38,-62 Q-36,-54 -32,-50 M-18,-60 Q-16,-52 -14,-47 M2,-62 Q4,-54 4,-47 M22,-66 Q26,-58 26,-50 M40,-74 Q46,-66 48,-58 M56,-88 Q62,-80 64,-72" fill="none" stroke="#9aa040" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- чешуя -->
+  <g fill="none" stroke="#2a6a2a" stroke-width="2" stroke-linecap="round" opacity="0.8">
+    <path d="M-50,-120 q5,-5 10,0 M-30,-132 q5,-5 10,0 M-8,-138 q5,-5 10,0 M14,-140 q5,-5 10,0 M36,-134 q5,-5 10,0 M-40,-100 q5,-5 10,0 M-18,-112 q5,-5 10,0 M4,-118 q5,-5 10,0 M26,-116 q5,-5 10,0 M-58,-92 q5,-5 10,0"/>
+  </g>
+  <!-- гребень -->
+  <g fill="#e7772c" stroke="#1d3a14" stroke-width="3" stroke-linejoin="round">
+    <path d="M-70,-128 L-62,-150 L-52,-136 Z"/>
+    <path d="M-50,-142 L-38,-168 L-28,-150 Z"/>
+    <path d="M-26,-154 L-12,-180 L-2,-160 Z"/>
+    <path d="M0,-160 L14,-184 L24,-162 Z"/>
+    <path d="M26,-160 L40,-180 L48,-156 Z"/>
+  </g>
+  <!-- передняя лапа -->
+  <ellipse cx="34" cy="-56" rx="25" ry="28" fill="url(#sk)" stroke="#1d3a14" stroke-width="4"/>
+  <path d="M20,-40 L22,-6 L10,-2 Q6,5 17,5 L52,5 Q60,3 53,-5 L48,-40 Z" fill="url(#sk)" stroke="#1d3a14" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M52,5 L63,6 L54,-2 Z M40,5 L49,7 L42,-1 Z M28,5 L36,7 L30,-1 Z" fill="#f4ead0" stroke="#1d3a14" stroke-width="2" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,7 @@
+Dark Ritual by Of Far Different Nature
+https://opengameart.org/content/dark-ritual
+License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) — автора нужно указывать в титрах.
+В игре: тишина в начале и конце обрезана, перекодировано в MP3 160 кбит/с для бесшовного повтора.
+
+Добавить свой трек: положить сюда mp3 и дописать запись в tracks.json
+(id = имя файла без .mp3, обязательно указать автора и лицензию — нужна разрешающая коммерческое использование).

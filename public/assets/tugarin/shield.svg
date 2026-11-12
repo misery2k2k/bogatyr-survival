@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-27 -39 54 78" width="54" height="78">
+  <!-- Щит развёрнут к зрителю внутренней стороной (лицом он смотрит вперёд, к врагу).
+       (0,0) — середина рукояти за умбоном: там его держит кулак (hand.svg). -->
+  <defs>
+    <linearGradient id="wood" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#1a1412"/><stop offset="0.55" stop-color="#3a2e28"/><stop offset="1" stop-color="#241c18"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" x2="1">
+      <stop offset="0" stop-color="#2a2a2e"/><stop offset="0.5" stop-color="#6a6a72"/><stop offset="1" stop-color="#3a3a40"/>
+    </linearGradient>
+    <clipPath id="inner"><ellipse cx="-0.5" cy="0" rx="15.5" ry="29.5"/></clipPath>
+  </defs>
+  <!-- край лицевой стороны: красная краска выглядывает по ребру -->
+  <ellipse cx="3.5" cy="0" rx="20" ry="34" fill="#5a0a08" stroke="#2a180e" stroke-width="3"/>
+  <path d="M19,-14 C22.5,-6 22.5,6 19,14" fill="none" stroke="#9b1a12" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- железный обод -->
+  <ellipse cx="0" cy="0" rx="19" ry="33.5" fill="url(#rim)" stroke="#2a180e" stroke-width="3"/>
+  <!-- изнанка: доски -->
+  <ellipse cx="-0.5" cy="0" rx="15.5" ry="29.5" fill="url(#wood)" stroke="#2a180e" stroke-width="1.8"/>
+  <g clip-path="url(#inner)" fill="none" stroke="#0a0606" stroke-width="1.3" opacity="0.85">
+    <path d="M-9,-31 C-10.5,-10 -10.5,10 -9,31"/>
+    <path d="M-3.2,-31 C-4,-10 -4,10 -3.2,31"/>
+    <path d="M3,-31 C3.6,-10 3.6,10 3,31"/>
+    <path d="M8.8,-31 C10,-10 10,10 8.8,31"/>
+  </g>
+  <!-- кожаный ремень под предплечье -->
+  <path d="M-15.5,-16 C-5,-18.5 5,-18.5 15,-16 L15,-10.5 C5,-13 -5,-13 -15.5,-10.5 Z" fill="#3a0806" stroke="#2a180e" stroke-width="1.8" stroke-linejoin="round"/>
+  <circle cx="-12" cy="-13.5" r="1.4" fill="#9b1a12"/><circle cx="11.5" cy="-13.5" r="1.4" fill="#9b1a12"/>
+  <!-- гнездо умбона и ручка -->
+  <ellipse cx="0" cy="3" rx="7" ry="10" fill="#050404" stroke="#2a180e" stroke-width="1.6"/>
+  <rect x="-2.6" y="-8" width="5.2" height="22" rx="2" fill="#2a1a14" stroke="#2a180e" stroke-width="1.6"/>
+  <!-- заклёпки обода -->
+  <g fill="#8e1a12">
+    <circle cx="0" cy="-31.5" r="1.3"/><circle cx="0" cy="31.5" r="1.3"/>
+    <circle cx="-15.5" cy="-18" r="1.2"/><circle cx="-15.5" cy="18" r="1.2"/>
+    <circle cx="15" cy="-18" r="1.2"/><circle cx="15" cy="18" r="1.2"/>
+    <circle cx="-17.5" cy="0" r="1.2"/><circle cx="17.2" cy="0" r="1.2"/>
+  </g>
+</svg>

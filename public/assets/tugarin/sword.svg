@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-24 -156 66 182" width="66" height="182">
+  <!-- Кривая сабля Тугарина: клинок изгибается вперёд (+x), к концу расширяется (елмань). (0,0) — рукоять. -->
+  <defs>
+    <linearGradient id="bl" x1="0" x2="1">
+      <stop offset="0" stop-color="#3a3a44"/><stop offset="0.5" stop-color="#b8bcc8"/><stop offset="1" stop-color="#5a5e6a"/>
+    </linearGradient>
+  </defs>
+  <path d="M-7,-14 C-9,-62 2,-112 34,-150 C36,-140 34,-128 28,-118 L24,-112 C12,-82 9,-46 8,-14 Z" fill="url(#bl)" stroke="#050405" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M-3,-20 C-4,-62 6,-108 30,-142" fill="none" stroke="#e8343a" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
+  <path d="M4,-22 C4,-60 12,-96 24,-116" fill="none" stroke="#24242a" stroke-width="2" stroke-linecap="round"/>
+  <rect x="-4.4" y="-11" width="8.8" height="24" rx="2.4" fill="#120e10" stroke="#050405" stroke-width="2.2"/>
+  <path d="M-4.2,-6 L4.2,-3.5 M-4.2,0 L4.2,2.5 M-4.2,6 L4.2,8.5" stroke="#3a3238" stroke-width="1.5"/>
+  <path d="M-20,-4 Q-10,-16 0,-15 Q10,-16 20,-4 L17,0 Q9,-9 0,-9 Q-9,-9 -17,0 Z" fill="#7a5a2a" stroke="#050405" stroke-width="2.4" stroke-linejoin="round"/>
+  <circle cx="0" cy="18" r="6" fill="#7a5a2a" stroke="#050405" stroke-width="2.2"/>
+  <circle cx="0" cy="18" r="2.6" fill="#e8343a"/>
+</svg>

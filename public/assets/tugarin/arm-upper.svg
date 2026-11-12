@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-19 -18 38 58" width="38" height="58">
+  <defs>
+    <linearGradient id="r" x1="0" x2="1"><stop offset="0" stop-color="#2f5a2a"/><stop offset="0.55" stop-color="#5f9a4f"/><stop offset="1" stop-color="#3f7a3a"/></linearGradient>
+    <linearGradient id="st" x1="0" x2="1"><stop offset="0" stop-color="#1a1a1e"/><stop offset="0.5" stop-color="#5a5a64"/><stop offset="1" stop-color="#2a2a30"/></linearGradient>
+    <pattern id="rings" width="4.4" height="3.8" patternUnits="userSpaceOnUse"><path d="M0,3.8 A2.2,2.2 0 0 1 4.4,3.8" fill="none" stroke="#6a6a72" stroke-width="0.85" opacity="0.8"/></pattern>
+  </defs>
+  <!-- thick arm: bicep bulge -->
+  <path d="M-12,-2 C-14,10 -13,24 -10,35 Q0,40 10,35 C14,24 15,10 12,-2 Z" fill="url(#r)" stroke="#2a180e" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M-13.5,-5 L13.5,-5 L13,17 C6,19 -6,19 -13,17 Z" fill="#2a2a2e" stroke="#2a180e" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M-13.5,-5 L13.5,-5 L13,17 C6,19 -6,19 -13,17 Z" fill="url(#rings)"/>
+  <path d="M-17,7 C-18,-15 18,-15 17,7 C9,1 -9,1 -17,7 Z" fill="url(#st)" stroke="#2a180e" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M-8,-6 C-3,-9 4,-9 8,-6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+</svg>

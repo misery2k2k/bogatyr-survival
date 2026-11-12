@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-25 -134 50 160" width="50" height="160">
+  <defs>
+    <linearGradient id="bl" x1="0" x2="1"><stop offset="0" stop-color="#7f8b97"/><stop offset="0.46" stop-color="#f4f7fa"/><stop offset="0.54" stop-color="#aeb8c2"/><stop offset="1" stop-color="#dfe5eb"/></linearGradient>
+    <linearGradient id="gd" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#f6d06a"/><stop offset="1" stop-color="#b8861e"/></linearGradient>
+  </defs>
+  <!-- broad heavy blade -->
+  <path d="M-8.5,-14 L8.5,-14 L7.5,-110 L0,-128 L-7.5,-110 Z" fill="url(#bl)" stroke="#2a180e" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M0,-18 L0,-104" stroke="#6f7b88" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M-5.5,-20 L-5,-104" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round" opacity="0.7"/>
+  <!-- grip -->
+  <rect x="-4.6" y="-11" width="9.2" height="24" rx="2.4" fill="#4a2810" stroke="#2a180e" stroke-width="2.4"/>
+  <path d="M-4.4,-6 L4.4,-3.5 M-4.4,0 L4.4,2.5 M-4.4,6 L4.4,8.5" stroke="#2a1406" stroke-width="1.5"/>
+  <!-- massive crossguard with drooping ends -->
+  <path d="M-23,-6 Q-12,-17 0,-17 Q12,-17 23,-6 L21,-1 Q11,-10 0,-10 Q-11,-10 -21,-1 Z" fill="url(#gd)" stroke="#2a180e" stroke-width="2.6" stroke-linejoin="round"/>
+  <circle cx="-22" cy="-3.5" r="3.6" fill="url(#gd)" stroke="#2a180e" stroke-width="2"/>
+  <circle cx="22" cy="-3.5" r="3.6" fill="url(#gd)" stroke="#2a180e" stroke-width="2"/>
+  <circle cx="0" cy="-13" r="3" fill="#c4352a" stroke="#2a180e" stroke-width="1.6"/>
+  <!-- pommel -->
+  <circle cx="0" cy="18.5" r="6.8" fill="url(#gd)" stroke="#2a180e" stroke-width="2.4"/>
+  <circle cx="-2" cy="16.5" r="2" fill="#fff6d0" opacity="0.8"/>
+</svg>

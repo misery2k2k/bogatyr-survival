@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-42 -86 88 114" width="88" height="114">
+  <defs>
+    <linearGradient id="m" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#1f2a1c"/><stop offset="0.6" stop-color="#4f6a3e"/><stop offset="1" stop-color="#2f3d28"/>
+    </linearGradient>
+    <pattern id="rings" width="5" height="4.2" patternUnits="userSpaceOnUse">
+      <path d="M0,4.2 A2.5,2.5 0 0 1 5,4.2" fill="none" stroke="#9bc26a" stroke-width="0.9" opacity="0.75"/>
+    </pattern>
+    <linearGradient id="lt" x1="0" x2="1"><stop offset="0" stop-color="#6e0f0a"/><stop offset="0.5" stop-color="#b3261c"/><stop offset="1" stop-color="#7a120c"/></linearGradient>
+  </defs>
+  <!-- chainmail hem -->
+  <path d="M-29,-20 L35,-20 L39,18 L32,14 L25,20 L18,14 L11,20 L4,14 L-3,20 L-10,14 L-17,20 L-24,14 L-33,17 Z" fill="url(#m)" stroke="#2a180e" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M-29,-20 L35,-20 L39,18 L32,14 L25,20 L18,14 L11,20 L4,14 L-3,20 L-10,14 L-17,20 L-24,14 L-33,17 Z" fill="url(#rings)"/>
+  <!-- barrel chest with a bit of belly -->
+  <path d="M-28,-14 C-38,-30 -40,-56 -33,-70 C-24,-82 28,-84 36,-70 C44,-57 46,-36 35,-18 L30,-14 Z" fill="url(#m)" stroke="#2a180e" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M-28,-14 C-38,-30 -40,-56 -33,-70 C-24,-82 28,-84 36,-70 C44,-57 46,-36 35,-18 L30,-14 Z" fill="url(#rings)"/>
+  <path d="M-28,-14 C-38,-30 -40,-56 -33,-70 C-29,-75 -22,-78 -14,-79 C-21,-60 -21,-36 -16,-14 Z" fill="#000" opacity="0.17"/>
+  <!-- chest and belly volume -->
+  <path d="M4,-66 C14,-70 28,-66 32,-56" fill="none" stroke="#a8d07a" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>
+  <path d="M20,-44 C30,-42 36,-34 35,-24" fill="none" stroke="#121a10" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <!-- red collar -->
+  <path d="M-10,-76 C-5,-69 14,-69 20,-76 L16,-80 L-6,-80 Z" fill="#8e1a12" stroke="#2a180e" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- leather baldric across the chest -->
+  <path d="M-30,-66 L-21,-72 L34,-26 L28,-19 Z" fill="url(#lt)" stroke="#2a180e" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M-25,-66 L30,-23" stroke="#2a0604" stroke-width="1" stroke-dasharray="2.5 2.5" opacity="0.7"/>
+  <!-- wide belt -->
+  <path d="M-30,-26 Q4,-18 37,-26 L37,-14 Q4,-6 -30,-14 Z" fill="#14100e" stroke="#2a180e" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M-27,-20 Q4,-12 34,-20" fill="none" stroke="#3a302a" stroke-width="1.6"/>
+  <rect x="8" y="-24" width="13" height="12" rx="2" fill="#e3b23c" stroke="#2a180e" stroke-width="2.2"/>
+  <rect x="12" y="-20.5" width="5" height="5" fill="#8a5a10"/>
+</svg>

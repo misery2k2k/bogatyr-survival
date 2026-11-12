@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-34 -150 124 160" width="124" height="160">
+  <defs>
+    <linearGradient id="sk" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2d7431"/><stop offset="0.6" stop-color="#63b347"/><stop offset="1" stop-color="#3f8a36"/>
+    </linearGradient>
+    <linearGradient id="hd" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6cbd4c"/><stop offset="1" stop-color="#357d33"/>
+    </linearGradient>
+  </defs>
+  <!-- шея -->
+  <path d="M-17,6 C-20,-40 -12,-80 4,-106 L30,-98 C18,-74 13,-40 16,6 Z" fill="url(#sk)" stroke="#1d3a14" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M6,4 C6,-36 11,-70 22,-98 L30,-98 C18,-72 13,-38 16,4 Z" fill="#dfe48e" stroke="#1d3a14" stroke-width="2.4" stroke-linejoin="round"/>
+  <g fill="#e7772c" stroke="#1d3a14" stroke-width="2.4" stroke-linejoin="round">
+    <path d="M-18,-20 L-30,-26 L-18,-34 Z"/><path d="M-15,-50 L-27,-58 L-14,-64 Z"/><path d="M-8,-80 L-20,-90 L-5,-92 Z"/>
+  </g>
+  <!-- рога -->
+  <path d="M6,-128 C-6,-142 -20,-146 -30,-140 C-19,-137 -9,-130 -1,-118 Z" fill="#f4ead0" stroke="#1d3a14" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M18,-132 C12,-144 4,-148 -4,-146 C3,-141 8,-136 10,-126 Z" fill="#e8dcbc" stroke="#1d3a14" stroke-width="2.6" stroke-linejoin="round"/>
+  <!-- нижняя челюсть (пасть приоткрыта) -->
+  <path d="M28,-99 L72,-97 C74,-90 66,-84 52,-84 C40,-84 30,-90 28,-99 Z" fill="url(#hd)" stroke="#1d3a14" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M32,-101 L73,-102 L68,-94 L34,-95 Z" fill="#b8231a"/>
+  <path d="M46,-95 L50,-101 L54,-95 Z M58,-95 L62,-101 L66,-95 Z" fill="#fffbe8" stroke="#1d3a14" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- голова и морда -->
+  <path d="M-2,-120 C0,-138 22,-142 40,-134 C56,-128 70,-122 80,-114 C86,-108 82,-101 74,-101 L30,-100 C14,-100 -2,-106 -2,-120 Z" fill="url(#hd)" stroke="#1d3a14" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M40,-101 L44,-95 L48,-101 Z M54,-101 L58,-95 L62,-101 Z M68,-101 L71,-96 L74,-101 Z" fill="#fffbe8" stroke="#1d3a14" stroke-width="1.2" stroke-linejoin="round"/>
+  <circle cx="71" cy="-114" r="2.4" fill="#1d3a14"/>
+  <!-- глаз со злым надбровьем -->
+  <ellipse cx="30" cy="-120" rx="7.5" ry="6.5" fill="#ffd23a" stroke="#1d3a14" stroke-width="2.4"/>
+  <ellipse cx="31.5" cy="-120" rx="1.8" ry="5.2" fill="#1d1408"/>
+  <path d="M18,-130 L42,-124 L40,-130 C32,-134 24,-134 18,-130 Z" fill="#2d7431" stroke="#1d3a14" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M8,-112 q4,-4 8,0 M14,-106 q4,-4 8,0" fill="none" stroke="#2a6a2a" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

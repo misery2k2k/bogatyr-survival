@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-15 -8 30 52" width="30" height="52">
+  <!-- Предплечье без кисти: кулак — отдельная деталь hand.svg, она поворачивается вместе с мечом/щитом. -->
+  <defs>
+    <linearGradient id="br" x1="0" x2="1"><stop offset="0" stop-color="#5a3216"/><stop offset="0.5" stop-color="#93582c"/><stop offset="1" stop-color="#6b3c1b"/></linearGradient>
+  </defs>
+  <path d="M-10,-4 L10,-4 L10,8 L-10,8 Z" fill="#c4352a" stroke="#2a180e" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M-6,22 L6,22 L5.5,32 L-5.5,32 Z" fill="#d9a079" stroke="#2a180e" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M-11.5,4 L11.5,4 L10,25 L-10,25 Z" fill="url(#br)" stroke="#2a180e" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M-11,9.5 L11,9.5 M-10.5,18 L10.5,18" stroke="#e3b23c" stroke-width="2.2"/>
+</svg>

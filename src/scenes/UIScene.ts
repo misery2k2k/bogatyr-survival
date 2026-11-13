@@ -3,6 +3,8 @@ import { ABILITY_BY_ID, abilityDesc } from '../abilities/defs';
 import type { AbilityId } from '../abilities/types';
 import { COLORS, DPR, FONT_TITLE, FONT_UI } from '../config';
 import { ITEM_BY_ID, RARITY, type ItemId } from '../items';
+import { DEBUG_ALLOWED } from '../debug';
+import { DebugPanel } from '../ui/DebugPanel';
 import { SettingsPanel } from '../ui/SettingsPanel';
 import { Yandex } from '../yandex';
 import type { GameScene, RunStats } from './GameScene';
@@ -45,6 +47,10 @@ export class UIScene extends Phaser.Scene {
   private settingsPaused = false;
   private bossText!: Text;
   private shade!: Phaser.GameObjects.Image;
+  /** Цветовое настроение главы (умножение поверх мира). */
+  private mood!: Phaser.GameObjects.Rectangle;
+  /** Панель тестера (только в dev и с ?debug=1). */
+  private debug: DebugPanel | null = null;
   /** Правый и нижний край блока иконок умений (чтобы полоска змея их не перекрывала). */
   private iconsRight = 0;
   private iconsBottom = 0;
@@ -72,6 +78,7 @@ export class UIScene extends Phaser.Scene {
         strokeThickness: 4,
       });
 
+    this.mood = this.add.rectangle(0, 0, 10, 10, this.g.biome.mood).setOrigin(0).setBlendMode(Phaser.BlendModes.MULTIPLY);
     this.shade = this.add.image(0, 0, 'shade').setOrigin(0).setAlpha(0.85);
     this.vignette = this.add.image(0, 0, 'vignette').setOrigin(0).setAlpha(0);
     this.hud = this.add.graphics();
@@ -96,6 +103,7 @@ export class UIScene extends Phaser.Scene {
     bus.on('toast', this.toast, this);
     bus.on('abilities', this.rebuildIcons, this);
     bus.on('chest', this.onChest, this);
+    bus.on('biome', this.onBiome, this);
 
     this.input.on('pointerdown', this.onPointerDown, this);
     this.input.on('pointermove', this.onPointerMove, this);
@@ -114,12 +122,16 @@ export class UIScene extends Phaser.Scene {
       bus.off('toast', this.toast, this);
       bus.off('abilities', this.rebuildIcons, this);
       bus.off('chest', this.onChest, this);
+      bus.off('biome', this.onBiome, this);
       this.scale.off('resize', this.layout, this);
       this.settings?.destroy();
       this.settings = null;
+      this.debug?.destroy();
+      this.debug = null;
     });
 
     this.layout();
+    if (DEBUG_ALLOWED) this.debug = new DebugPanel(this, this.g, this.s);
   }
 
   // ------------------------------------------------------------------ HUD
@@ -135,11 +147,13 @@ export class UIScene extends Phaser.Scene {
     this.toastText.setFontSize(30 * s).setStroke('#140b04', 6 * s).setPosition(W / 2, H * 0.26);
     this.vignette.setDisplaySize(W, H);
     this.shade.setDisplaySize(W, H);
+    this.mood.setSize(W, H);
+    this.debug?.resize(s);
     this.bossText.setFontSize(15 * s).setStroke('#140b04', 4 * s).setPosition(W / 2, 74 * s);
     this.gear.setDisplaySize(34 * s, 34 * s).setPosition(W - 10 * s - 17 * s, 84 * s);
     if (this.settings) {
       this.settings.destroy();
-      this.settings = new SettingsPanel(this, s, () => this.onSettingsClosed());
+      this.settings = new SettingsPanel(this, s, () => this.onSettingsClosed(), () => void this.exitToMenu());
     }
     this.joyBase.setScale(s * 0.8);
     this.joyKnob.setScale(s * 0.8);
@@ -163,7 +177,7 @@ export class UIScene extends Phaser.Scene {
     this.timerText.setText(fmtTime(g.elapsed));
 
     // Полоска здоровья Змея Горыныча (ближайшего живого)
-    const bosses = [...g.dragons, ...g.tugarins].filter((d) => !d.dead);
+    const bosses = g.bossList();
     const boss = bosses.sort((a, b) => Math.hypot(a.x - g.player.x, a.y - g.player.y) - Math.hypot(b.x - g.player.x, b.y - g.player.y))[0];
     this.bossText.setVisible(!!boss);
     if (boss) {
@@ -224,7 +238,22 @@ export class UIScene extends Phaser.Scene {
       this.g.scene.pause();
       Yandex.gameplayStop();
     }
-    this.settings = new SettingsPanel(this, this.s, () => this.onSettingsClosed());
+    this.settings = new SettingsPanel(this, this.s, () => this.onSettingsClosed(), () => void this.exitToMenu());
+  }
+
+  /** Выйти из забега в главное меню (злато за пройденное начисляется). */
+  private async exitToMenu(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    this.g.quitRun();
+    await Yandex.showFullscreenAd(this.pauseForAd, this.resumeAfterAd);
+    this.busy = false;
+    this.settings?.destroy();
+    this.settings = null;
+    this.closeModal();
+    this.modalStats = null;
+    this.scene.stop('Game');
+    this.scene.start('Menu');
   }
 
   private onSettingsClosed(): void {
@@ -318,6 +347,7 @@ export class UIScene extends Phaser.Scene {
   private onPointerDown(p: Phaser.Input.Pointer): void {
     if (this.modal || this.settings || this.joyId !== -1) return;
     if (this.gear.getBounds().contains(p.x, p.y)) return;
+    if (this.debug?.contains(p.x, p.y)) return;
     this.joyId = p.id;
     this.joyOx = p.x;
     this.joyOy = p.y;
@@ -519,6 +549,10 @@ export class UIScene extends Phaser.Scene {
     return card;
   }
 
+  private onBiome(): void {
+    this.mood.setFillStyle(this.g.biome.mood);
+  }
+
   // ------------------------------------------------------------------ Сундук
 
   private onChest(id: ItemId): void {
@@ -621,7 +655,7 @@ export class UIScene extends Phaser.Scene {
     c.add(this.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0).setInteractive());
 
     const pw = Math.min(W - 28 * s, 400 * s);
-    const ph = 300 * s;
+    const ph = (stats.canRevive ? 392 : 330) * s;
     const px = (W - pw) / 2, py = H / 2 - ph / 2 + 10 * s;
     const panel = this.add.graphics();
     panel.fillStyle(COLORS.parchment, 1).fillRoundedRect(px, py, pw, ph, 16 * s);
@@ -640,7 +674,12 @@ export class UIScene extends Phaser.Scene {
         .setOrigin(0.5, 1),
     );
 
-    const lines = [`Продержался: ${fmtTime(stats.time)}`, `Сражено нечисти: ${stats.kills}`, `Уровень: ${stats.level}`];
+    const lines = [
+      `Продержался: ${fmtTime(stats.time)}`,
+      `Сражено нечисти: ${stats.kills}`,
+      `Уровень: ${stats.level}`,
+      `Злато: +${stats.gold}  (всего ${stats.totalGold})`,
+    ];
     c.add(
       this.add
         .text(W / 2, py + 24 * s, lines.join('\n'), {
@@ -656,6 +695,8 @@ export class UIScene extends Phaser.Scene {
 
     const bw = pw - 48 * s, bh = 52 * s;
     let by = py + ph - 24 * s - bh;
+    c.add(this.makeButton('В главное меню', W / 2, by, bw, bh * 0.85, 0x5a4636, () => void this.exitToMenu()));
+    by -= bh + 12 * s;
     c.add(this.makeButton('Снова в бой', W / 2, by, bw, bh, 0x8b1e1e, () => this.restart()));
     if (stats.canRevive) {
       by -= bh + 12 * s;

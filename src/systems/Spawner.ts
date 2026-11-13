@@ -1,25 +1,20 @@
 import Phaser from 'phaser';
+import { BIOMES, type BiomeDef } from '../biomes';
+import { BOSS_TOAST } from '../bosses';
 import { MAX_ZOMBIES, ZOMBIES, type ZombieType } from '../config';
 import type { GameScene } from '../scenes/GameScene';
 
-type BossKind = 'gorynych' | 'tugarin' | 'duo' | 'fused';
+/** Первый босс главы (с от её начала) и пауза после смерти босса до следующего (с). */
+const FIRST_BOSS = 180;
+const BOSS_GAP = 120;
+/**
+ * С какой минуты (по ожиданию) начинается каждая глава. Угроза считается не меньше, чем если бы богатырь
+ * пришёл в главу вовремя: кто пробежал главы быстро (или через режим тестера), слабых врагов там не встретит.
+ */
+const CHAPTER_MIN = [0, 13, 23, 33, 43, 56];
+/** Сколько «минут» добавляет каждый новый круг. */
+const LAP_MIN = 66;
 
-/** Первые прилёты боссов (с), дальше — по кругу каждые BOSS_EVERY секунд и всё сильнее. */
-const BOSS_PLAN: { t: number; kind: BossKind }[] = [
-  { t: 180, kind: 'gorynych' },
-  { t: 300, kind: 'tugarin' },
-  { t: 450, kind: 'duo' },
-  { t: 600, kind: 'fused' },
-];
-const BOSS_EVERY = 150;
-const BOSS_CYCLE: BossKind[] = ['gorynych', 'tugarin', 'duo', 'fused'];
-
-const BOSS_TOAST: Record<BossKind, string> = {
-  gorynych: 'Змей Горыныч летит!',
-  tugarin: 'Тугарин Змеевич идёт!',
-  duo: 'Тугарин и Горыныч заодно!',
-  fused: 'Тугаро-Горыныч!!!',
-};
 
 /**
  * Волны нечисти, орды, боссы. Нечисти немного, но она крепчает со временем и с уровнем богатыря:
@@ -28,16 +23,30 @@ const BOSS_TOAST: Record<BossKind, string> = {
 export class Spawner {
   private acc = 0;
   private nextHorde = 46;
-  private lullShown = -1;
   private bossIdx = 0;
-  private nextBoss = BOSS_PLAN[0].t;
+  /** Когда придёт следующий босс; пока жив текущий — бесконечность. */
+  private nextBoss = FIRST_BOSS;
+  private bossAlive = false;
   /** Номер прилёта боссов (0 — ещё не было). С первого убитого в прилёте падает сундук. */
   bossWave = 0;
+  /** Глава (индекс в BIOMES), круг (сколько раз прошли все главы), когда глава началась. */
+  chapter = 0;
+  lap = 0;
+  chapterStart = 0;
+  /** Передышка после перехода в новую главу. */
+  private graceUntil = 0;
+
+  get biome(): BiomeDef {
+    return BIOMES[this.chapter];
+  }
 
   constructor(private readonly g: GameScene) {}
 
-  private get minutes(): number {
-    return this.g.elapsed / 60;
+  /** Минуты угрозы: время забега, но не меньше ожидаемого для главы и круга. */
+  get minutes(): number {
+    const real = this.g.elapsed / 60;
+    const inChapter = (this.g.elapsed - this.chapterStart) / 60;
+    return Math.max(real, (CHAPTER_MIN[this.chapter] ?? 0) + this.lap * LAP_MIN + inChapter);
   }
 
   /**
@@ -46,12 +55,38 @@ export class Spawner {
    */
   get hpMul(): number {
     const m = this.minutes;
-    return 1 + m * 0.3 + m * m * 0.045;
+    // после 10-й минуты прокачанный богатырь уже сносит всё — нечисть крепчает быстрее; новый круг — ещё вдвое
+    return (1 + m * 0.3 + m * m * 0.045 + Math.max(0, m - 10) * 0.9) * (1 + this.lap);
   }
 
-  /** Множитель урона нечисти. */
+  /** Множитель урона нечисти: к поздним главам растёт всё быстрее, иначе прокачанному богатырю никто не страшен. */
   get dmgMul(): number {
-    return 1 + this.minutes * 0.09 + (this.g.level - 1) * 0.012;
+    const m = this.minutes;
+    return (1 + m * 0.09 + Math.max(0, m - 12) ** 2 * 0.003 + (this.g.level - 1) * 0.012) * (1 + this.lap * 0.5);
+  }
+
+  /**
+   * Здоровье боссов: растёт мягче, чем у нечисти, — под урон хорошей сборки к этому времени
+   * (бой — около минуты, гибриды и Чернобог — дольше).
+   */
+  get bossHpMul(): number {
+    const m = this.minutes;
+    return (1 + m * 0.2 + m * m * 0.012) * (1 + this.lap);
+  }
+
+  /** Доля «богатырских» ударов боссов от здоровья богатыря: в лесу — меньше половины, на Дне Пекла — полностью. */
+  get bossPctK(): number {
+    return Math.min(1, 0.45 + 0.11 * this.chapter) + this.lap * 0.25;
+  }
+
+  /** Боссы поздних глав перезаряжают приёмы быстрее. */
+  get bossAggro(): number {
+    return Math.max(0.6, 1 - 0.05 * this.chapter - 0.1 * this.lap);
+  }
+
+  /** Сколько нечисти может быть разом: к поздней игре — больше. */
+  get maxAlive(): number {
+    return MAX_ZOMBIES + Math.min(80, Math.max(0, this.minutes - 8) * 10);
   }
 
   /** Половина диагонали видимой области + запас: дальше этого зомби считаются «отставшими». */
@@ -65,21 +100,27 @@ export class Spawner {
     const m = this.minutes;
     // зомби в секунду: меньше, чем раньше, но каждый крепче
     const rate = (0.6 + m * 0.95 + Math.min(m * m * 0.2, 3.5) + (this.g.level - 1) * 0.03) * this.waveFactor(t) * this.mercy();
-    this.acc += rate * dt;
+    this.acc += t < this.graceUntil ? 0 : rate * dt;
     while (this.acc >= 1) {
       this.acc -= 1;
-      if (this.g.aliveZombies < MAX_ZOMBIES) this.spawnAt(this.pickType(t), this.ringPoint());
+      if (this.g.aliveZombies < this.maxAlive) this.spawnAt(this.pickType(t), this.ringPoint());
     }
     if (t >= this.nextHorde) {
       this.nextHorde += 60;
       this.horde(Math.round(16 + m * 4));
     }
-    const cycle = Math.floor(t / 60);
-    if (t % 60 >= 50 && this.lullShown !== cycle) {
-      this.lullShown = cycle;
-      this.g.bus.emit('toast', 'Затишье — переведи дух');
+    // Боссы по очереди: следующий — через BOSS_GAP после того, как пал предыдущий
+    const alive = this.g.bossesAlive();
+    if (this.bossAlive && !alive) {
+      if (this.bossIdx >= this.biome.bosses.length) {
+        // все боссы главы повержены — дальше новая глава
+        this.nextChapter(t);
+      } else {
+        this.nextBoss = t + BOSS_GAP;
+      }
     }
-    if (t >= this.nextBoss) this.spawnBosses();
+    this.bossAlive = alive;
+    if (!alive && t >= this.nextBoss) this.spawnBosses();
   }
 
   /** Ритм волны (цикл 60 с): обычный натиск → нарастание → орда на 46-й → затишье с 50-й по 60-ю. */
@@ -98,29 +139,47 @@ export class Spawner {
   }
 
   private spawnBosses(): void {
-    const idx = this.bossIdx++;
-    const kind = idx < BOSS_PLAN.length ? BOSS_PLAN[idx].kind : BOSS_CYCLE[(idx - BOSS_PLAN.length) % BOSS_CYCLE.length];
-    this.nextBoss = idx + 1 < BOSS_PLAN.length ? BOSS_PLAN[idx + 1].t : this.g.elapsed + BOSS_EVERY;
-    this.bossWave++;
-    // после первого круга боссы приходят по двое и крепче
-    const extra = idx >= BOSS_PLAN.length ? 1 + Math.floor((idx - BOSS_PLAN.length) / BOSS_CYCLE.length) : 0;
-    // боссы крепчают со временем медленнее обычной нечисти, но с каждым кругом — по-новой
-    const hp = (1 + (this.hpMul - 1) * 0.6) * (1 + extra * 0.25);
-    const a0 = Math.random() * Math.PI * 2;
-    const at = (k: number, n: number) => this.ringPoint(a0 + (k / Math.max(1, n)) * Math.PI * 2);
-    this.g.bus.emit('toast', BOSS_TOAST[kind]);
-    if (kind === 'gorynych') {
-      const n = 1 + Math.min(extra, 2);
-      for (let k = 0; k < n; k++) this.g.spawnDragon(at(k, n).x, at(k, n).y, hp);
-    } else if (kind === 'tugarin') {
-      const n = 1 + Math.min(extra, 2);
-      for (let k = 0; k < n; k++) this.g.spawnTugarin(at(k, n).x, at(k, n).y, hp);
-    } else if (kind === 'duo') {
-      this.g.spawnDragon(at(0, 2).x, at(0, 2).y, hp);
-      this.g.spawnTugarin(at(1, 2).x, at(1, 2).y, hp);
-    } else {
-      this.g.spawnDragon(at(0, 1).x, at(0, 1).y, hp, true);
+    const kind = this.biome.bosses[this.bossIdx];
+    // картинки босса ещё грузятся (слабая сеть) — подождём пару секунд
+    if (!['gorynych', 'tugarin', 'fused'].includes(kind) && !this.g.bosses.ready(kind)) {
+      this.nextBoss = this.g.elapsed + 2;
+      return;
     }
+    this.bossIdx++;
+    this.nextBoss = Infinity;
+    this.bossAlive = true;
+    this.bossWave++;
+    // боссы крепчают со временем медленнее обычной нечисти (круг уже учтён в hpMul)
+    const hp = this.bossHpMul;
+    const pt = this.ringPoint();
+    this.g.bus.emit('toast', BOSS_TOAST[kind]);
+    this.g.spawnBoss(kind, pt.x, pt.y, hp);
+  }
+
+  /** Режим тестера: следующий босс прямо сейчас (если никого нет). */
+  forceBoss(): void {
+    if (!this.g.bossesAlive()) this.nextBoss = this.g.elapsed;
+  }
+
+  /** Режим тестера: сразу следующая глава. */
+  forceChapter(): void {
+    this.bossAlive = false;
+    this.nextChapter(this.g.elapsed);
+  }
+
+  /** Переход в следующую главу (после Пекла — снова лес, но новый круг). */
+  private nextChapter(t: number): void {
+    this.chapter++;
+    if (this.chapter >= BIOMES.length) {
+      this.chapter = 0;
+      this.lap++;
+    }
+    this.bossIdx = 0;
+    this.chapterStart = t;
+    this.graceUntil = t + 6;
+    this.nextHorde = Math.max(this.nextHorde, t + 40);
+    this.nextBoss = t + FIRST_BOSS;
+    this.g.enterChapter(this.biome, this.lap);
   }
 
   /** Стартовая пачка, чтобы бой начался сразу. */
@@ -128,12 +187,17 @@ export class Spawner {
     for (let i = 0; i < 5; i++) this.spawnAt(ZOMBIES.walker, this.ringPoint());
   }
 
+  /** Случайная нечисть из набора текущей главы (с учётом того, с какой секунды главы она приходит). */
   private pickType(t: number): ZombieType {
-    const r = Math.random();
-    const brute = Phaser.Math.Clamp((t - 120) / 600, 0, 0.12);
-    const runner = Phaser.Math.Clamp((t - 35) / 180, 0, 0.32);
-    if (r < brute) return ZOMBIES.brute;
-    if (r < brute + runner) return ZOMBIES.runner;
+    const since = t - this.chapterStart;
+    // нечисть, чьи картинки ещё не загрузились, пока не приходит
+    const pool = this.biome.enemies.filter((e) => since >= (e.from ?? 0) && this.loaded(ZOMBIES[e.key]));
+    const total = pool.reduce((s, e) => s + e.weight, 0);
+    let r = Math.random() * total;
+    for (const e of pool) {
+      r -= e.weight;
+      if (r <= 0) return ZOMBIES[e.key];
+    }
     return ZOMBIES.walker;
   }
 
@@ -147,9 +211,39 @@ export class Spawner {
   }
 
   private spawnAt(type: ZombieType, pos: { x: number; y: number }): void {
-    // ратники и так толстые — их здоровье растёт со временем медленнее остальных
-    const hp = type.key === 'brute' ? 1 + (this.hpMul - 1) * 0.7 : this.hpMul;
-    this.g.spawnZombie(type, pos.x, pos.y, hp, this.dmgMul);
+    // с третьей главы изредка приходит «лютый» — крупный, красный, толстый, почти не отлетает
+    if (!type.heavy && Math.random() < this.champChance) type = this.champion(type);
+    // здоровяки и так толстые — их здоровье растёт со временем медленнее остальных
+    const hp = type.heavy ? 1 + (this.hpMul - 1) * 0.7 : this.hpMul;
+    this.g.spawnZombie(type, pos.x, pos.y, hp * this.startK, this.dmgMul * this.startK);
+  }
+
+  /**
+   * Мягкий старт: первые полминуты нечисть заметно слабее и к концу первой минуты приходит в норму —
+   * чтобы начало было бодрым, но не таким, что новичка сразу задавят.
+   */
+  private get startK(): number {
+    if (this.lap > 0 || this.chapter > 0) return 1;
+    return Math.min(1, 0.55 + 0.45 * (this.g.elapsed / 60));
+  }
+
+  /** Доля «лютых» среди нечисти: с Выжженной земли — растёт с каждой главой и кругом. */
+  get champChance(): number {
+    return Math.max(0, this.chapter - 1) * 0.012 + this.lap * 0.03;
+  }
+
+  private champs = new Map<string, ZombieType>();
+
+  /** «Лютый» вариант нечисти: в восемь раз толще, бьёт вдвое, почти не отлетает. */
+  private champion(t: ZombieType): ZombieType {
+    let c = this.champs.get(t.key);
+    if (!c) {
+      const r = ((t.tint >> 16) & 255) / 255, g = ((t.tint >> 8) & 255) / 255, b = (t.tint & 255) / 255;
+      const tint = (Math.round(255 * r) << 16) | (Math.round(150 * g) << 8) | Math.round(140 * b);
+      c = { ...t, hp: t.hp * 8, damage: t.damage * 2, scale: t.scale * 1.3, radius: Math.round(t.radius * 1.25), speed: t.speed * 1.08, knockbackResist: 0.95, tint, xp: t.xp * 10, heavy: true, elite: true };
+      this.champs.set(t.key, c);
+    }
+    return c;
   }
 
   /** Орда: дуга в 250° — с одной стороны остаётся проход, чтобы ближник мог вырваться. */
@@ -158,9 +252,16 @@ export class Spawner {
     const start = Math.random() * Math.PI * 2;
     const arc = Phaser.Math.DegToRad(250);
     for (let i = 0; i < n; i++) {
-      if (this.g.aliveZombies >= MAX_ZOMBIES) break;
+      if (this.g.aliveZombies >= this.maxAlive) break;
       const a = start + (i / Math.max(1, n - 1)) * arc;
-      this.spawnAt(i % 10 === 5 && this.g.elapsed > 150 ? ZOMBIES.brute : ZOMBIES.walker, this.ringPoint(a));
+      const [main, heavy] = this.biome.horde.map((k) => ZOMBIES[k]);
+      const pick = i % 10 === 5 && this.g.elapsed > 150 && this.loaded(heavy) ? heavy : this.loaded(main) ? main : ZOMBIES.walker;
+      this.spawnAt(pick, this.ringPoint(a));
     }
+  }
+
+  /** Картинки нечисти уже загружены (атласы глав грузятся фоном). */
+  private loaded(t: ZombieType | undefined): boolean {
+    return !!t && this.g.anims.exists(`${t.anim}-walk`);
   }
 }

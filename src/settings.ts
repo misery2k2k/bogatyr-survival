@@ -2,13 +2,11 @@
 // (если он недоступен — просто живут до перезагрузки).
 
 export interface Settings {
-  music: number;
   sfx: number;
-  track: string;
 }
 
 const KEY = 'bogatyr-settings-v1';
-const DEFAULTS: Settings = { music: 0.55, sfx: 0.8, track: 'dark-ritual' };
+const DEFAULTS: Settings = { sfx: 0.8 };
 
 let current: Settings = load();
 const listeners = new Set<(s: Settings) => void>();

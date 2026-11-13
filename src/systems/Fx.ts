@@ -177,6 +177,35 @@ export class Fx {
     this.ring(x, y, 60, 0xbfe0ff, 260);
   }
 
+  /** Частица в воздухе главы: тени (motes), пепел (ash), угли (embers), снег (snow), души (souls). */
+  ambient(kind: 'motes' | 'ash' | 'embers' | 'snow' | 'souls', x: number, y: number): void {
+    if (kind === 'snow') {
+      const im = this.img('circle_05').setBlendMode(Phaser.BlendModes.ADD).setTint(0xffffff).setPosition(x, y).setScale(Phaser.Math.FloatBetween(0.014, 0.03)).setAlpha(0.9).setDepth(90000);
+      this.scene.tweens.add({ targets: im, x: x - Phaser.Math.Between(40, 110), y: y + Phaser.Math.Between(160, 240), alpha: 0, duration: 2600, ease: 'Sine.easeIn', onComplete: () => this.release(im) });
+      return;
+    }
+    if (kind === 'souls') {
+      // грешные души поднимаются из земли — лиловые огоньки
+      const im = this.img('circle_05').setBlendMode(Phaser.BlendModes.ADD).setTint(Math.random() < 0.6 ? 0xb06aff : 0xff6a9a).setPosition(x, y).setScale(Phaser.Math.FloatBetween(0.04, 0.08)).setAlpha(0).setDepth(y + 200);
+      this.scene.tweens.add({ targets: im, alpha: { from: 0, to: 0.6 }, x: x + Phaser.Math.Between(-20, 20), y: y - 90, duration: 1300, yoyo: true, ease: 'Sine.easeInOut', onComplete: () => this.release(im) });
+      return;
+    }
+    if (kind === 'motes') {
+      // блуждающие огоньки — тусклые фиолетовые искры
+      const im = this.img('circle_05').setBlendMode(Phaser.BlendModes.ADD).setTint(0x8a5ad0).setPosition(x, y).setScale(Phaser.Math.FloatBetween(0.03, 0.07)).setAlpha(0).setDepth(y + 200);
+      this.scene.tweens.add({ targets: im, alpha: { from: 0, to: 0.55 }, x: x + Phaser.Math.Between(-30, 30), y: y - 40, duration: 1400, yoyo: true, ease: 'Sine.easeInOut', onComplete: () => this.release(im) });
+      return;
+    }
+    if (kind === 'ash') {
+      const im = this.img('px').setTint(Math.random() < 0.5 ? 0x9a948c : 0x5a544e).setPosition(x, y).setScale(Phaser.Math.FloatBetween(0.6, 1.2)).setAlpha(0.8).setDepth(90000);
+      im.setRotation(Math.random() * Math.PI);
+      this.scene.tweens.add({ targets: im, x: x - 60, y: y + 140, rotation: im.rotation + 3, alpha: 0, duration: 2400, ease: 'Sine.easeIn', onComplete: () => this.release(im) });
+      return;
+    }
+    const im = this.img('star_04').setBlendMode(Phaser.BlendModes.ADD).setTint(Math.random() < 0.5 ? 0xff8a3a : 0xffc14a).setPosition(x, y).setScale(Phaser.Math.FloatBetween(0.03, 0.06)).setDepth(90000);
+    this.scene.tweens.add({ targets: im, x: x + Phaser.Math.Between(-30, 30), y: y - Phaser.Math.Between(80, 150), alpha: 0, duration: 1700, ease: 'Quad.easeOut', onComplete: () => this.release(im) });
+  }
+
   /** Звено цепной молнии между двумя точками (Перстень Громовержца). */
   chain(x1: number, y1: number, x2: number, y2: number): void {
     const d = Math.hypot(x2 - x1, y2 - y1);

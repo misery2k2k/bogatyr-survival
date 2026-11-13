@@ -1,0 +1,14 @@
+{
+ "feet": [
+  225.2,
+  415.1
+ ],
+ "figure": 360,
+ "anims": {
+  "walk": 10,
+  "attack": 10,
+  "slam": 10,
+  "idle": 6,
+  "dead": 7
+ }
+}

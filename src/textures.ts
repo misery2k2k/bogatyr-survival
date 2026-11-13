@@ -546,6 +546,41 @@ function makeItems(scene: Phaser.Scene) {
     }
   });
 
+  // Стрела лучника (летит вправо, поворачивается по направлению)
+  canvasTex(scene, 'arrow', 46, 12, (c, _w, h) => {
+    const y = h / 2;
+    c.strokeStyle = INK;
+    c.lineWidth = 1.4;
+    c.fillStyle = '#8a5a2b';
+    c.fillRect(6, y - 1.5, 30, 3);
+    c.strokeRect(6, y - 1.5, 30, 3);
+    poly(c, [36, y - 5, 45, y, 36, y + 5], '#c9d1d8', INK, 1.4);
+    poly(c, [2, y - 5, 12, y - 1, 12, y + 1, 2, y + 5, 6, y], '#d63a2a', INK, 1.2);
+  });
+
+  // Колдовской шар (белый — красится при выстреле: огонь, души, яд)
+  canvasTex(scene, 'orb', 34, 34, (c, w, h) => {
+    const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.35, 'rgba(255,255,255,0.95)');
+    g.addColorStop(0.6, 'rgba(255,255,255,0.45)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, w, h);
+  });
+
+  // Осколок: ледяная игла, шип, кость (летит вправо, белый — красится при выстреле)
+  canvasTex(scene, 'shard', 40, 14, (c, _w, h) => {
+    const y = h / 2;
+    poly(c, [2, y, 14, y - 5, 39, y, 14, y + 5], '#ffffff', INK, 1.4);
+    c.strokeStyle = 'rgba(160,190,220,0.9)';
+    c.lineWidth = 1.2;
+    c.beginPath();
+    c.moveTo(8, y);
+    c.lineTo(34, y);
+    c.stroke();
+  });
+
   // Гиря кистеня
   canvasTex(scene, 'flail', 34, 34, (c, w, h) => drawFlailBall(c, w / 2, h / 2, 11));
 
@@ -937,6 +972,54 @@ function makeIcons(scene: Phaser.Scene) {
     c.fillRect(15, 26, 26, 3);
     c.fillRect(15, 46, 25, 3);
     foliage(c, [[18, 14, 6], [27, 11, 7], [36, 13, 6]], ['#fff6dc', '#ffffff', '#ffffff'], mulberry32(93), 1.8);
+  });
+
+  // Монета злата — валюта мета-прокачки
+  icon('coin', (c) => {
+    circle(c, 32, 33, 24, INK);
+    const g = c.createRadialGradient(26, 26, 3, 32, 33, 23);
+    g.addColorStop(0, '#fff2b0');
+    g.addColorStop(0.6, '#f2c14e');
+    g.addColorStop(1, '#b8861e');
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(32, 33, 22, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = '#8a5a10';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(32, 33, 16, 0, Math.PI * 2);
+    c.stroke();
+    // трезубец-оберег в центре
+    c.strokeStyle = '#8a5a10';
+    c.lineWidth = 2.6;
+    c.beginPath();
+    c.moveTo(32, 22);
+    c.lineTo(32, 44);
+    c.moveTo(24, 26);
+    c.lineTo(24, 36);
+    c.quadraticCurveTo(32, 42, 40, 36);
+    c.lineTo(40, 26);
+    c.stroke();
+  });
+
+  // Ветвистое дерево — кнопка древа талантов
+  icon('tree', (c) => {
+    c.strokeStyle = INK;
+    c.lineWidth = 7;
+    c.beginPath();
+    c.moveTo(32, 58);
+    c.lineTo(32, 30);
+    c.moveTo(32, 40);
+    c.lineTo(18, 26);
+    c.moveTo(32, 36);
+    c.lineTo(46, 22);
+    c.stroke();
+    c.strokeStyle = '#8a5a2b';
+    c.lineWidth = 4;
+    c.stroke();
+    foliage(c, [[18, 22, 9], [46, 18, 9], [32, 16, 10], [24, 12, 7], [40, 30, 7]], ['#3a7428', '#56963a', '#86c25c'], mulberry32(97), 2);
+    for (const [x, y] of [[20, 20], [44, 16], [33, 13]]) circle(c, x, y, 2.6, '#f2c14e');
   });
 
   // Шестерёнка настроек (для кнопки HUD)

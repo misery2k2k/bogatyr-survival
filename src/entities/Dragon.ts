@@ -28,6 +28,11 @@ export const DRAGON = {
   fireRange: 300,
   fireHalfAngle: 0.36,
   fireCd: 4.2,
+  /** Прицел конусом: сколько длится и как быстро доворачивает за богатырём (рад/с). */
+  aimTime: 1.15,
+  aimTurn: 0.4,
+  /** Подготовка огненного кольца. */
+  ringAim: 1.2,
   /** Огненное кольцо вокруг себя, если богатырь подошёл вплотную. */
   ringRadius: 190,
   ringDmg: 22,
@@ -46,6 +51,14 @@ const MOUTH = [76, -100];
 const SHOULDER = [-6, -140];
 
 type Img = Phaser.GameObjects.Image;
+
+/** Другой облик на тех же деталях (Ящер: одна голова, без крыльев, свой цвет и размер). */
+export interface DragonLook {
+  heads?: 1 | 3;
+  wings?: boolean;
+  tint?: number;
+  scale?: number;
+}
 
 export class Dragon extends Phaser.GameObjects.Container implements Enemy {
   ztype: EnemyKind = DRAGON;
@@ -90,11 +103,11 @@ export class Dragon extends Phaser.GameObjects.Container implements Enemy {
   rainT = 4;
   private readonly bodyTint: number;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, fused = false) {
+  constructor(scene: Phaser.Scene, x: number, y: number, fused = false, look: DragonLook = {}) {
     super(scene, x, y);
     this.fused = fused;
-    this.baseScale = DRAGON.scale * (fused ? 1.22 : 1);
-    this.bodyTint = fused ? 0xc8949a : 0xffffff;
+    this.baseScale = DRAGON.scale * (fused ? 1.22 : 1) * (look.scale ?? 1);
+    this.bodyTint = look.tint ?? (fused ? 0xc8949a : 0xffffff);
     if (fused) this.ztype = { ...DRAGON, name: 'Тугаро-Горыныч', xp: 140 };
     const part = (p: DragonPart, tint = 0xffffff) => {
       const vb = DRAGON_PARTS[p];
@@ -109,6 +122,14 @@ export class Dragon extends Phaser.GameObjects.Container implements Enemy {
     this.wingF = part('wing');
     this.necks[1] = part('neck');
     this.necks[2] = part('neck');
+    if (look.heads === 1) {
+      this.necks[0].setVisible(false);
+      this.necks[2].setVisible(false);
+    }
+    if (look.wings === false) {
+      this.wingB.setVisible(false);
+      this.wingF.setVisible(false);
+    }
     this.setScale(this.baseScale);
     scene.add.existing(this);
     if (fused) this.rider = new HeroRig(scene, x, y, 0.4, TUGARIN_SKIN);
@@ -132,7 +153,7 @@ export class Dragon extends Phaser.GameObjects.Container implements Enemy {
     for (const im of this.list as Img[]) im.setTint(0xffb4a8).setTintMode(Phaser.TintModes.MULTIPLY);
   }
 
-  private restoreTint(): void {
+  restoreTint(): void {
     const mul = (a: number, b: number) => {
       const ca = Phaser.Display.Color.IntegerToColor(a), cb = Phaser.Display.Color.IntegerToColor(b);
       return Phaser.Display.Color.GetColor((ca.red * cb.red) / 255, (ca.green * cb.green) / 255, (ca.blue * cb.blue) / 255);

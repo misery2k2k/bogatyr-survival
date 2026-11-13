@@ -2,8 +2,9 @@ import Phaser from 'phaser';
 import { COLORS, DPR, FONT_TITLE, FONT_UI, TEX_RES } from '../config';
 import { HERO_UNITS_TALL, HeroRig } from '../entities/HeroRig';
 import { readZombieOrigins } from '../entities/Zombie';
-import { Music } from '../music';
+import { Save } from '../save';
 import { SettingsPanel } from '../ui/SettingsPanel';
+import { TalentPanel } from '../ui/TalentPanel';
 import { Yandex } from '../yandex';
 
 /** Титульный экран. */
@@ -11,7 +12,9 @@ export class MenuScene extends Phaser.Scene {
   private started = false;
   private hero: HeroRig | null = null;
   private swingT = 1.2;
-  private settings: SettingsPanel | null = null;
+  private settings: SettingsPanel | TalentPanel | null = null;
+  /** Кнопка древа талантов (с запасом злата). */
+  private talentBtn: Phaser.GameObjects.Container | null = null;
   private gear: Phaser.GameObjects.Image | null = null;
   private uiScale = 1;
   private settingsClosedAt = -1e9;
@@ -24,7 +27,6 @@ export class MenuScene extends Phaser.Scene {
     this.started = false;
     this.settings = null;
     readZombieOrigins(this);
-    Music.init(this);
     this.build();
     this.scale.on('resize', this.build, this);
     this.events.once('shutdown', () => {
@@ -39,6 +41,10 @@ export class MenuScene extends Phaser.Scene {
     });
 
     Yandex.loadingReady();
+    // облачное сохранение могло оказаться новее локального — перерисуем баланс
+    void Save.load().then(() => {
+      if (this.scene.isActive() && !this.started) this.build();
+    });
   }
 
   update(_t: number, delta: number): void {
@@ -141,6 +147,28 @@ export class MenuScene extends Phaser.Scene {
           this.settingsClosedAt = this.time.now;
         });
     });
+
+    // Древо талантов — внизу слева
+    const bw = 210 * gs, bh = 44 * gs, bx = 12 * gs, by = H - bh - 12 * gs;
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.35).fillRoundedRect(2 * gs, 3 * gs, bw, bh, 12 * gs);
+    bg.fillStyle(0x3a5a22, 1).fillRoundedRect(0, 0, bw, bh, 12 * gs);
+    bg.lineStyle(2.5 * gs, COLORS.gold, 1).strokeRoundedRect(0, 0, bw, bh, 12 * gs);
+    const tree = this.add.image(24 * gs, bh / 2, 'icon-tree').setDisplaySize(34 * gs, 34 * gs);
+    const label = this.add.text(46 * gs, 8 * gs, 'Древо талантов', { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${15 * gs}px`, color: '#ffffff' });
+    const coin = this.add.image(54 * gs, 32 * gs, 'icon-coin').setDisplaySize(15 * gs, 15 * gs);
+    const gold = this.add.text(64 * gs, 32 * gs, `${Save.get().gold}`, { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${13 * gs}px`, color: COLORS.goldText }).setOrigin(0, 0.5);
+    const zone = this.add.zone(0, 0, bw, bh).setOrigin(0).setInteractive({ useHandCursor: true });
+    this.talentBtn = this.add.container(bx, by, [bg, tree, label, coin, gold, zone]).setDepth(9500);
+    zone.on('pointerup', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      if (this.settings) return;
+      this.settings = new TalentPanel(this, gs, () => {
+        this.settings = null;
+        this.settingsClosedAt = this.time.now;
+        gold.setText(`${Save.get().gold}`);
+      });
+    });
   }
 
   private start(): void {
@@ -148,6 +176,7 @@ export class MenuScene extends Phaser.Scene {
     if (this.started || this.settings || this.time.now - this.settingsClosedAt < 300) return;
     const p = this.input.activePointer;
     if (this.gear && this.gear.getBounds().contains(p.x, p.y)) return;
+    if (this.talentBtn && this.talentBtn.getBounds().contains(p.x, p.y)) return;
     this.started = true;
     this.scene.start('Game');
   }

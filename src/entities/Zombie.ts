@@ -1,16 +1,19 @@
 import Phaser from 'phaser';
 import type { ZombieType } from '../config';
+import { mobOrigin } from '../mobs';
 
-/** Высота фигуры в пикселях атласа (без масштаба) — для цифр урона и эффектов. */
-const FIGURE_H: Record<ZombieType['sprite'], number> = { m: 155, f: 165 };
+/** Точки опоры кадров (между ступнями) по префиксу анимации — из meta.origins атласов (tools/build-assets.mjs). */
+const origins: Record<string, [number, number]> = { m: [0.5, 0.93], f: [0.5, 0.92] };
 
-/** Точки опоры кадров атласа (между ступнями) — пишет tools/build-assets.mjs в meta.origins. */
-let origins: Record<string, [number, number]> = { m: [0.5, 0.93], f: [0.5, 0.92] };
+/** Атласы нечисти, у которых в meta записаны точки опоры. */
+export const ENEMY_ATLASES = ['zombies'];
 
 export function readZombieOrigins(scene: Phaser.Scene): void {
-  const data = scene.textures.get('zombies').customData as { meta?: { origins?: typeof origins } } | undefined;
-  const meta = data?.meta;
-  if (meta?.origins) origins = meta.origins;
+  for (const key of ENEMY_ATLASES) {
+    if (!scene.textures.exists(key)) continue;
+    const data = scene.textures.get(key).customData as { meta?: { origins?: typeof origins } } | undefined;
+    Object.assign(origins, data?.meta?.origins ?? {});
+  }
 }
 
 /** Зомби. Двигает и сталкивает их GameScene (централизованно, ради производительности). */
@@ -30,6 +33,12 @@ export class Zombie extends Phaser.GameObjects.Sprite {
   slowT = 0;
   kbTired = 0;
   touching = false;
+  /** Состояние поведения стрелков и прыгунов. */
+  aiState: 'move' | 'aim' | 'leap' = 'move';
+  aiT = 0;
+  aimX = 0;
+  aimY = 0;
+  leapHit = false;
   /** Время последнего попадания по зомби от каждого оружия (для «тикающих» атак). */
   lastHit: Record<string, number> = {};
 
@@ -41,7 +50,7 @@ export class Zombie extends Phaser.GameObjects.Sprite {
 
   /** Высота фигуры в мире. */
   get figureH(): number {
-    return FIGURE_H[this.ztype.sprite] * this.ztype.scale;
+    return this.ztype.figure * this.ztype.scale;
   }
 
   spawn(t: ZombieType, x: number, y: number, hpMul: number): this {
@@ -57,13 +66,18 @@ export class Zombie extends Phaser.GameObjects.Sprite {
     this.slowT = 0;
     this.kbTired = 0;
     this.touching = false;
+    this.aiState = 'move';
+    this.aiT = Phaser.Math.FloatBetween(0.5, 1.5) * (t.shotCd ?? t.leapCd ?? 1);
+    this.leapHit = false;
     this.lastHit = {};
     this.dead = false;
-    const o = origins[t.sprite];
+    const o = origins[t.anim] ?? mobOrigin(t.anim) ?? [0.5, 0.92];
     this.scene.tweens.killTweensOf(this);
+    this.setTexture(t.tex, `${t.anim}-walk0`);
     this.setActive(true).setVisible(true).setAlpha(1).setAngle(0).setScale(t.scale).setOrigin(o[0], o[1]);
     this.restoreTint();
-    this.play({ key: `${t.sprite}-walk`, startFrame: Phaser.Math.Between(0, 9), timeScale: t.animRate });
+    const walk = this.scene.anims.get(`${t.anim}-walk`);
+    this.play({ key: `${t.anim}-walk`, startFrame: Phaser.Math.Between(0, Math.max(0, (walk?.frames.length ?? 1) - 1)), timeScale: t.animRate });
     return this;
   }
 
@@ -80,7 +94,11 @@ export class Zombie extends Phaser.GameObjects.Sprite {
   die(): void {
     this.dead = true;
     this.restoreTint();
-    this.play({ key: `${this.ztype.sprite}-dead`, timeScale: 1 });
+    // у кого нет анимации смерти (Древень) — вздрагивает и тает
+    const a = this.ztype.anim;
+    const key = this.scene.anims.exists(`${a}-dead`) ? `${a}-dead` : `${a}-hurt`;
+    if (this.scene.anims.exists(key)) this.play({ key, timeScale: 1, repeat: 0 });
+    else this.stop();
     this.scene.tweens.add({
       targets: this,
       alpha: 0,

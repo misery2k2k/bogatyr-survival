@@ -83,6 +83,57 @@ export const Yandex = {
     ysdk?.features?.GameplayAPI?.stop?.();
   },
 
+  /**
+   * Данные игрока из облака Яндекса (у вошедших — на всех устройствах, у гостей SDK хранит их сам).
+   * null — SDK недоступен (локально) или ошибка.
+   */
+  async loadData(): Promise<Record<string, unknown> | null> {
+    await this.init();
+    if (!ysdk?.getPlayer) return null;
+    try {
+      const player = await ysdk.getPlayer({ scopes: false });
+      return (await player.getData()) as Record<string, unknown>;
+    } catch (e) {
+      console.warn('[YSDK] getData failed', e);
+      return null;
+    }
+  },
+
+  async saveData(data: Record<string, unknown>): Promise<void> {
+    await this.init();
+    if (!ysdk?.getPlayer) return;
+    try {
+      const player = await ysdk.getPlayer({ scopes: false });
+      await player.setData(data, true);
+    } catch (e) {
+      console.warn('[YSDK] setData failed', e);
+    }
+  },
+
+  /** Вошёл ли игрок в аккаунт Яндекса (иначе прогресс живёт только на этом устройстве). */
+  async isAuthorized(): Promise<boolean> {
+    await this.init();
+    if (!ysdk?.getPlayer) return false;
+    try {
+      const player = await ysdk.getPlayer({ scopes: false });
+      return player.getMode?.() !== 'lite';
+    } catch {
+      return false;
+    }
+  },
+
+  /** Предложить войти, чтобы прогресс не потерялся. */
+  async askAuth(): Promise<boolean> {
+    await this.init();
+    if (!ysdk?.auth?.openAuthDialog) return false;
+    try {
+      await ysdk.auth.openAuthDialog();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   /** Полноэкранная реклама. onPause/onResume — заглушить звук и остановить игру. */
   showFullscreenAd(onPause: () => void, onResume: () => void): Promise<void> {
     return new Promise((resolve) => {

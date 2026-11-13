@@ -3,19 +3,26 @@ import { ABILITIES, ABILITY_BY_ID } from '../abilities/defs';
 import type { AbilityId, Weapon } from '../abilities/types';
 import { COLORS, PLAYER_BASE, TEX_RES, VIEW_AREA_SQRT, xpForLevel, type ZombieType } from '../config';
 import { Pickups } from '../entities/Pickups';
-import { Player, baseStats } from '../entities/Player';
+import { ARMOR_CAP, Player, baseStats } from '../entities/Player';
 import { DRAGON, Dragon } from '../entities/Dragon';
 import type { Enemy } from '../entities/Enemy';
 import { TUGARIN, Tugarin } from '../entities/Tugarin';
 import { Zombie } from '../entities/Zombie';
 import { ITEM_BY_ID, RARITY, rollItem, type ItemId, type Rarity } from '../items';
-import { Music } from '../music';
+import { debugState } from '../debug';
+import { Save } from '../save';
+import { applyTalents, runGold, talentLevel } from '../talents';
 import { getSettings } from '../settings';
 import { SFX_TONAL, sfxCacheKey, type SfxKey } from '../sfx';
 import { Decor } from '../systems/Decor';
 import { Fx } from '../systems/Fx';
+import { Projectiles } from '../systems/Projectiles';
 import { SpatialGrid } from '../systems/SpatialGrid';
 import { Spawner } from '../systems/Spawner';
+import { BIOMES, type BiomeDef, type BossKind } from '../biomes';
+import { Bosses } from '../systems/Bosses';
+import type { BossActor } from '../entities/SpriteBoss';
+import { LazyAssets } from '../mobs';
 import { Yandex } from '../yandex';
 
 export type { SfxKey };
@@ -27,6 +34,9 @@ export interface RunStats {
   kills: number;
   level: number;
   canRevive: boolean;
+  /** Злато за забег и всего в кошельке. */
+  gold: number;
+  totalGold: number;
 }
 
 export type DamageKind = 'hit' | 'helix' | 'splash';
@@ -63,18 +73,30 @@ export class GameScene extends Phaser.Scene {
   joyX = 0;
   joyY = 0;
   state: 'play' | 'levelup' | 'dead' | 'chest' = 'play';
+  /** Режим тестера: множитель времени. */
+  timeScale = 1;
+  /** Убито боссов за забег (для злата). */
+  bossKills = 0;
+  /** Сколько злата уже начислено в этом забеге (после воскрешения считаем только прибавку). */
+  private goldAwarded = 0;
+  /** Бесплатные воскрешения от таланта «Второе дыхание». */
+  private freeRevives = 0;
   /** Предметы из сундуков (в порядке получения). */
   items: ItemId[] = [];
   featherUsed = false;
   chests: Chest[] = [];
+  /** Текущая глава (локация). */
+  biome: BiomeDef = BIOMES[0];
   revivesLeft = 1;
 
+  /** Боссы на готовых спрайтах и Ящер. */
+  bosses!: Bosses;
   private grid = new SpatialGrid<Zombie>(64);
   private buf: Zombie[] = [];
   private weapons = new Map<AbilityId, Weapon>();
   private pickups!: Pickups;
   private decor!: Decor;
-  private spawner!: Spawner;
+  spawner!: Spawner;
   private ground!: Phaser.GameObjects.TileSprite;
   private hpBar!: Phaser.GameObjects.Graphics;
   private keys?: Keys;
@@ -89,8 +111,13 @@ export class GameScene extends Phaser.Scene {
   private shakeCd = 0;
   /** Сколько ещё может вылечить вампиризм (копится со временем — потолок лечения в секунду). */
   private lsBudget = 0;
-  private fireGfx!: Phaser.GameObjects.Graphics;
+  /** Слой подсветок атак (конусы, круги, лучи) — перерисовывается каждый шаг. */
+  fireGfx!: Phaser.GameObjects.Graphics;
+  projectiles!: Projectiles;
+  /** Масштаб земли текущей главы (мировых px на пиксель текстуры). */
+  private groundScale = 1 / TEX_RES;
   private chestT = 0;
+  private ambientAcc = 0;
   private chestWave = 0;
   /** Неуязвимость от Камня Алатыря (с). */
   private invulnT = 0;
@@ -136,14 +163,26 @@ export class GameScene extends Phaser.Scene {
     this.grid = new SpatialGrid<Zombie>(64);
     this.bus = new Phaser.Events.EventEmitter();
 
-    this.ground = this.add.tileSprite(0, 0, 64, 64, 'ground').setOrigin(0).setScale(1 / TEX_RES).setDepth(-10000);
+    this.groundScale = 1 / TEX_RES;
+    this.ground = this.add.tileSprite(0, 0, 64, 64, 'ground').setOrigin(0).setScale(this.groundScale).setDepth(-10000);
     this.decor = new Decor(this);
+    this.biome = BIOMES[0];
     this.fx = new Fx(this);
     this.pickups = new Pickups(this);
     this.player = new Player(this, 0, 0);
     this.hpBar = this.add.graphics().setDepth(99999);
     this.fireGfx = this.add.graphics().setDepth(-7500);
+    this.projectiles = new Projectiles(
+      this,
+      (dmg, pct) => (pct > 0 ? this.hitPlayerHard(dmg, pct, null) : this.hitPlayer(dmg, null)),
+      (x, y, tint) => this.fx.spark(x, y, tint, 0.05),
+    );
+    this.events.once('shutdown', () => this.projectiles.clear());
     this.spawner = new Spawner(this);
+    this.bosses = new Bosses(this);
+    this.events.once('shutdown', () => this.bosses.clear());
+    // ассеты первой главы и следующей — фоном, пока идёт бой
+    LazyAssets.ensure(this, BIOMES[0].assets, () => LazyAssets.ensure(this, BIOMES[1].assets));
 
     const cam = this.cameras.main;
     cam.setBackgroundColor('#3f6a2a');
@@ -162,11 +201,15 @@ export class GameScene extends Phaser.Scene {
 
     this.addAbility('sword');
     this.spawner.opening();
+    this.bossKills = 0;
+    this.goldAwarded = 0;
+    this.freeRevives = talentLevel('revive');
+    this.player.god = debugState.god;
+    this.setTimeScale(debugState.timeScale);
 
     this.scene.stop('UI');
     this.scene.launch('UI');
     Yandex.gameplayStart();
-    Music.ensure();
   }
 
   /** Видимая область мира (считаем сами: worldView обновляется только после рендера). */
@@ -180,12 +223,22 @@ export class GameScene extends Phaser.Scene {
     const zoom = Math.sqrt(w * h) / VIEW_AREA_SQRT;
     this.cameras.main.setZoom(zoom);
     this.fx.setTextResolution(zoom);
-    this.ground.setSize((w / zoom + 128) * TEX_RES, (h / zoom + 128) * TEX_RES);
+    this.ground.setSize((w / zoom + 128) / this.groundScale, (h / zoom + 128) / this.groundScale);
   }
 
   // ------------------------------------------------------------------
   update(_time: number, delta: number): void {
-    const dt = Math.min(delta / 1000, 0.05);
+    // Ускорение времени (режим тестера): логику считаем мелкими шагами, чтобы ничего не «перепрыгивало»
+    let left = Math.min(delta / 1000, 0.05) * this.timeScale;
+    while (left > 1e-6) {
+      const dt = Math.min(left, 0.05);
+      left -= dt;
+      this.step(dt);
+      if (!this.sys.isActive()) break;
+    }
+  }
+
+  private step(dt: number): void {
     const p = this.player;
 
     if (this.state === 'play') {
@@ -207,6 +260,7 @@ export class GameScene extends Phaser.Scene {
         iy = this.joyY;
       }
       this.healShown += p.tick(dt, ix, iy);
+      p.slowMul = 1;
       this.helixCd -= dt;
       this.shakeCd -= dt;
       this.alatyrCd -= dt;
@@ -222,10 +276,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.rebuildGrid();
+    // слой подсветок атак (конусы, круги, линии прицела) рисуется заново каждый кадр
+    this.fireGfx.clear();
     this.updateZombies(dt);
     this.updateDragons(dt);
     this.updateTugarins(dt);
+    this.bosses.update(dt);
     this.updateMeteors(dt);
+    this.projectiles.update(dt, p.x, p.y, PLAYER_BASE.hitRadius, this.state === 'play' && !p.dead);
     this.rebuildGrid();
 
     if (this.state === 'play') {
@@ -238,6 +296,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updateGround();
+    this.updateAmbient(dt);
     this.drawHpBar();
 
     if (this.state === 'play') {
@@ -273,7 +332,84 @@ export class GameScene extends Phaser.Scene {
       z.slowT -= dt;
       z.kbTired -= dt;
       let vx = 0, vy = 0;
-      if (d > touchDist * 0.85 && !p.dead) {
+      const ai = z.ztype.ai ?? 'melee';
+      const playing = this.state === 'play' && !p.dead;
+      if (ai === 'archer') {
+        // Стрелок: держит дистанцию; целится (тонкая красная линия) и стреляет туда, где богатырь в момент выстрела
+        const range = z.ztype.range ?? 260;
+        z.aiT -= dt;
+        if (z.aiState === 'aim') {
+          this.fireGfx.lineStyle(1.5, z.ztype.shotTint ?? 0xff4a2a, 0.35 + 0.4 * (1 - z.aiT / 0.55)).lineBetween(z.x, z.y - z.figureH * 0.55, p.x, p.y - p.tall * 0.4);
+          if (z.aiT <= 0) {
+            if (playing) {
+              const orb = z.ztype.shot === 'orb';
+              this.projectiles.fire(z.x, z.y, p.x, p.y, {
+                key: z.ztype.shot ?? 'arrow',
+                damage: z.damage,
+                speed: z.ztype.shotSpeed ?? 380,
+                tint: z.ztype.shotTint,
+                trail: orb ? z.ztype.shotTint : 0,
+                radius: orb ? 14 : 16,
+              });
+              this.sfx(orb ? 'fire' : 'spear', 0.25, 1.4);
+            }
+            z.aiState = 'move';
+            z.aiT = (z.ztype.shotCd ?? 2.6) * Phaser.Math.FloatBetween(0.85, 1.15);
+            z.play({ key: `${z.ztype.anim}-walk`, timeScale: z.ztype.animRate });
+          }
+        } else {
+          if (d > range * 1.15) {
+            vx = (dx / d) * z.speed * slow;
+            vy = (dy / d) * z.speed * slow;
+          } else if (d < range * 0.6) {
+            vx = -(dx / d) * z.speed * 0.8 * slow;
+            vy = -(dy / d) * z.speed * 0.8 * slow;
+          }
+          if (playing && d < range * 1.4 && z.aiT <= 0) {
+            z.aiState = 'aim';
+            z.aiT = 0.55;
+            z.play({ key: `${z.ztype.anim}-attack`, timeScale: z.ztype.animRate });
+          }
+        }
+      } else if (ai === 'leaper') {
+        // Прыгун: подкрадывается, замирает (метка на земле) и прыгает
+        z.aiT -= dt;
+        if (z.aiState === 'aim') {
+          const k = 1 - Math.max(0, z.aiT) / 0.45;
+          this.fireGfx.fillStyle(0xff3a1a, 0.15 + 0.25 * k).fillEllipse(z.aimX, z.aimY, 64, 40);
+          this.fireGfx.lineStyle(2, 0xff5a2a, 0.5 + 0.5 * k).strokeEllipse(z.aimX, z.aimY, 64, 40);
+          if (z.aiT <= 0) {
+            z.aiState = 'leap';
+            z.leapHit = false;
+            z.aiT = Math.hypot(z.aimX - z.x, z.aimY - z.y) / (z.ztype.leapSpeed ?? 560);
+          }
+        } else if (z.aiState === 'leap') {
+          const lx = z.aimX - z.x, ly = z.aimY - z.y, ld = Math.hypot(lx, ly) || 1;
+          const step = Math.min(ld, (z.ztype.leapSpeed ?? 560) * dt);
+          z.x += (lx / ld) * step;
+          z.y += (ly / ld) * step;
+          if (playing && !z.leapHit && d < touchDist + 10) {
+            z.leapHit = true;
+            this.hitPlayer(Math.round(z.damage * 1.5), z);
+          }
+          if (z.aiT <= 0 || ld < 4) {
+            z.aiState = 'move';
+            z.aiT = z.ztype.leapCd ?? 3.5;
+          }
+        } else {
+          if (d > touchDist * 0.85 && !p.dead) {
+            vx = (dx / d) * z.speed * slow;
+            vy = (dy / d) * z.speed * slow;
+          }
+          const lr = z.ztype.leapRange ?? 230;
+          if (playing && d < lr && d > 70 && z.aiT <= 0) {
+            z.aiState = 'aim';
+            z.aiT = 0.45;
+            z.aimX = p.x + (dx / d) * 30;
+            z.aimY = p.y + (dy / d) * 30;
+          }
+        }
+      } else if (d > touchDist * 0.85 && !p.dead) {
         vx = (dx / d) * z.speed * slow;
         vy = (dy / d) * z.speed * slow;
       }
@@ -303,16 +439,16 @@ export class GameScene extends Phaser.Scene {
       z.x += vx * dt;
       z.y += vy * dt;
 
-      // Атака вплотную
+      // Атака вплотную (стрелки врукопашную не бьют, прыгун в прыжке бьёт сам)
       z.attackCd -= dt;
-      const touching = d <= touchDist + 4 && !p.dead;
+      const touching = d <= touchDist + 4 && !p.dead && ai !== 'archer' && z.aiState === 'move';
       if (touching && z.attackCd <= 0 && this.state === 'play') {
         z.attackCd = 1.2;
         this.hitPlayer(z.damage, z);
       }
-      if (touching !== z.touching) {
+      if (touching !== z.touching && ai !== 'archer') {
         z.touching = touching;
-        z.play({ key: `${z.ztype.sprite}-${touching ? 'attack' : 'walk'}`, timeScale: z.ztype.animRate });
+        z.play({ key: `${z.ztype.anim}-${touching ? 'attack' : 'walk'}`, timeScale: z.ztype.animRate });
       }
 
       if (z.flashT > 0) {
@@ -321,6 +457,8 @@ export class GameScene extends Phaser.Scene {
       }
       if (Math.abs(dx) > 4) z.setFlipX(dx < 0);
       z.setDepth(z.y);
+      // «лютый» — красный круг под ногами, чтобы угрозу было видно в толпе
+      if (z.ztype.elite) this.fireGfx.lineStyle(3, 0xff3a2a, 0.75).strokeEllipse(z.x, z.y, z.radius * 2.6, z.radius * 1.3);
     }
   }
 
@@ -349,12 +487,27 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Частицы в воздухе по главе: тени, пепел, угли. */
+  private updateAmbient(dt: number): void {
+    const kind = this.biome.particles;
+    if (kind === 'none') return;
+    const rate = kind === 'ash' ? 22 : kind === 'snow' ? 30 : kind === 'embers' ? 14 : kind === 'souls' ? 7 : 5;
+    this.ambientAcc += dt * rate;
+    const v = this.cameras.main.worldView;
+    while (this.ambientAcc >= 1) {
+      this.ambientAcc -= 1;
+      const x = v.x + Math.random() * v.width;
+      const y = kind === 'ash' || kind === 'snow' ? v.y - 40 + Math.random() * v.height * 0.8 : v.y + Math.random() * (v.height + 60);
+      this.fx.ambient(kind, x, y);
+    }
+  }
+
   private updateGround(): void {
     const v = this.cameras.main.worldView;
     const x = Math.floor(v.x - 64), y = Math.floor(v.y - 64);
     this.ground.setPosition(x, y);
-    this.ground.tilePositionX = x * TEX_RES;
-    this.ground.tilePositionY = y * TEX_RES;
+    this.ground.tilePositionX = x / this.groundScale;
+    this.ground.tilePositionY = y / this.groundScale;
     this.decor.update(v);
   }
 
@@ -363,6 +516,11 @@ export class GameScene extends Phaser.Scene {
     const g = this.hpBar;
     g.clear();
     if (p.dead) return;
+    if (p.rootT > 0) {
+      this.fireGfx.lineStyle(4, 0x8ad86a, 0.85).strokeEllipse(p.x, p.y, 64, 30);
+      this.fireGfx.lineStyle(2, 0xd8ffd0, 0.7).strokeEllipse(p.x, p.y - 6, 50, 22);
+    }
+    if (p.noHealT > 0) this.fireGfx.lineStyle(3, 0xb06aff, 0.5 + 0.3 * Math.sin(this.elapsed * 8)).strokeEllipse(p.x, p.y, 80, 40);
     const w = 54, h = 6, x = p.x - w / 2, y = p.y + 9;
     g.fillStyle(0x000000, 0.65).fillRect(x - 1.5, y - 1.5, w + 3, h + 3);
     g.fillStyle(COLORS.hp, 1).fillRect(x, y, w * Phaser.Math.Clamp(p.hp / p.stats.maxHp, 0, 1), h);
@@ -391,8 +549,7 @@ export class GameScene extends Phaser.Scene {
       const dx = z.x - x, dy = z.y - y;
       if (dx * dx + dy * dy <= rr * rr) out.push(z);
     }
-    for (const d of [...this.dragons, ...this.tugarins]) {
-      if (d.dead) continue;
+    for (const d of this.bigOnes()) {
       const rr = r + d.radius;
       const dx = d.x - x, dy = d.y - y;
       if (dx * dx + dy * dy <= rr * rr) out.push(d);
@@ -411,8 +568,7 @@ export class GameScene extends Phaser.Scene {
         best = z;
       }
     }
-    for (const z of [...this.dragons, ...this.tugarins]) {
-      if (z.dead) continue;
+    for (const z of this.bigOnes()) {
       const d = Math.hypot(z.x - x, z.y - y) - z.radius;
       if (d <= maxR && d < bestD) {
         bestD = d;
@@ -420,6 +576,20 @@ export class GameScene extends Phaser.Scene {
       }
     }
     return best;
+  }
+
+  /** Живые боссы, по которым можно бить (кроме ушедших под землю и встающих). */
+  private bigOnes(): Enemy[] {
+    const out: Enemy[] = [];
+    for (const d of this.dragons) if (!d.dead) out.push(d);
+    for (const t of this.tugarins) if (!t.dead) out.push(t);
+    for (const b of this.bosses.list) if (!b.dead && !b.hidden && b.reviveT <= 0) out.push(b);
+    return out;
+  }
+
+  /** Все живые боссы — для полосы здоровья. */
+  bossList(): Enemy[] {
+    return [...this.dragons, ...this.tugarins, ...this.bosses.list].filter((b) => !b.dead);
   }
 
   /** Щит Святогора: шанс полностью принять удар на щит. */
@@ -436,7 +606,7 @@ export class GameScene extends Phaser.Scene {
    * Удар нечисти по богатырю: уворот (шапка-невидимка) → блок (щит) → отбив круговертью → урон
    * → ответ ежовыми рукавицами. Возвращает true, если урон прошёл.
    */
-  private hitPlayer(raw: number, from: Enemy | null): boolean {
+  hitPlayer(raw: number, from: Enemy | null): boolean {
     const p = this.player;
     if (this.invulnT > 0) return false;
     if (p.stats.evasion > 0 && Math.random() < p.stats.evasion) {
@@ -453,7 +623,7 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
     // Камень Алатырь: удар, после которого останется меньше трети здоровья, не проходит — 3 с неуязвимости
-    const expected = raw * (1 - Math.min(0.75, p.stats.armor));
+    const expected = raw * (1 - Math.min(ARMOR_CAP, p.stats.armor));
     if (this.items.includes('alatyr') && this.alatyrCd <= 0 && p.hp - expected < p.stats.maxHp / 3) {
       this.alatyrCd = 40;
       this.invulnT = 3;
@@ -468,6 +638,38 @@ export class GameScene extends Phaser.Scene {
     this.fx.number(p.x, p.y - p.tall - 4, dmg, '#ff5a4a', 18);
     this.sfx('hurt', 0.35);
     this.bus.emit('hurt');
+    if (from && p.stats.thorns > 0 && !from.dead) this.damageZombie(from, raw * p.stats.thorns, p.x, p.y, 220, 'splash');
+    return true;
+  }
+
+  /**
+   * Богатырский удар босса (подсвеченный приём — от него надо уходить): мимо не пройдёт, щитом и круговертью
+   * не отбить, броня держит вдвое хуже. Урон — не меньше pct от здоровья богатыря (в поздних главах больше),
+   * иначе прокачанного по самые брови богатыря боссы бы и не замечали.
+   */
+  hitPlayerHard(raw: number, pct: number, from: Enemy | null): boolean {
+    const p = this.player;
+    if (this.invulnT > 0) return false;
+    const dmgRaw = Math.max(raw, p.stats.maxHp * pct * this.spawner.bossPctK);
+    const expected = dmgRaw * (1 - Math.min(ARMOR_CAP, p.stats.armor) * 0.5);
+    if (this.items.includes('alatyr') && this.alatyrCd <= 0 && p.hp - expected < p.stats.maxHp / 3) {
+      this.alatyrCd = 40;
+      this.invulnT = 3;
+      this.fx.ring(p.x, p.y, 160, 0xfff0b0, 520);
+      this.fx.critBurst(p.x, p.y - p.tall * 0.5, 1.6);
+      this.fx.number(p.x, p.y - p.tall - 8, 'Алатырь!', '#fff0b0', 20, true);
+      this.sfx('soul0', 0.5, 0.5);
+      return false;
+    }
+    const dmg = p.takeDamage(dmgRaw, 0.5);
+    if (dmg <= 0) return false;
+    this.fx.number(p.x, p.y - p.tall - 4, dmg, '#ff3a2a', 22, true);
+    this.sfx('hurt', 0.45, 0.85);
+    this.bus.emit('hurt');
+    if (this.shakeCd <= 0) {
+      this.cameras.main.shake(120, 0.004);
+      this.shakeCd = 0.25;
+    }
     if (from && p.stats.thorns > 0 && !from.dead) this.damageZombie(from, raw * p.stats.thorns, p.x, p.y, 220, 'splash');
     return true;
   }
@@ -496,7 +698,7 @@ export class GameScene extends Phaser.Scene {
       if (this.chests.length < 2) {
         const a = Math.random() * Math.PI * 2, r = Phaser.Math.FloatBetween(380, 600);
         this.spawnChest(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r * 0.85);
-        this.bus.emit('toast', 'Где-то в лесу сундук!');
+        this.bus.emit('toast', this.biome.id === 'forest' ? 'Где-то в лесу сундук!' : 'Где-то рядом сундук!');
       }
     }
     for (const c of this.chests) {
@@ -582,8 +784,8 @@ export class GameScene extends Phaser.Scene {
 
   spawnDragon(x: number, y: number, hpMul: number, fused = false): void {
     const d = new Dragon(this, x, y, fused);
-    d.hp = d.maxHp = Math.round(DRAGON.hp * hpMul * (fused ? 3.2 : 1));
-    d.damage = Math.round(DRAGON.damage * Math.sqrt(hpMul) * (fused ? 1.3 : 1));
+    d.hp = d.maxHp = Math.round(DRAGON.hp * hpMul * (fused ? 2.5 : 1));
+    d.damage = Math.round(DRAGON.damage * this.spawner.dmgMul * (fused ? 1.3 : 1));
     if (fused) {
       d.radius = DRAGON.radius * 1.22;
       d.fireT = 1.5;
@@ -591,6 +793,145 @@ export class GameScene extends Phaser.Scene {
     this.dragons.push(d);
     this.sfx('roar', 0.7, fused ? 0.8 : 1);
     this.cameras.main.shake(260, 0.004);
+  }
+
+  // ------------------------------------------------------------------
+  // Режим тестера
+
+  /** Ускорение времени: логика, твины, таймеры и анимации. */
+  setTimeScale(k: number): void {
+    this.timeScale = k;
+    this.tweens.timeScale = k;
+    this.time.timeScale = k;
+    this.anims.globalTimeScale = k;
+  }
+
+  /** +n уровней сразу, умения выбираются случайно (без окна выбора). */
+  debugLevels(n: number): void {
+    for (let i = 0; i < n; i++) {
+      this.level++;
+      this.xp = 0;
+      this.xpNext = xpForLevel(this.level);
+      const choices = this.rollChoices(3);
+      const pick = choices[Math.floor(Math.random() * choices.length)];
+      if (pick === 'pie') this.player.heal(this.player.stats.maxHp * 0.3);
+      else this.addAbility(pick);
+    }
+    this.fx.ring(this.player.x, this.player.y, 150, COLORS.gold, 520);
+  }
+
+  /** Все умения на максимум. */
+  debugMaxAll(): void {
+    for (const a of ABILITIES) {
+      if (a.kind === 'consumable') continue;
+      while ((this.levels.get(a.id) ?? 0) < a.maxLevel) this.addAbility(a.id);
+    }
+  }
+
+  debugAddTime(sec: number): void {
+    this.elapsed += sec;
+  }
+
+  debugBoss(): void {
+    this.spawner.forceBoss();
+  }
+
+  debugChapter(): void {
+    for (const b of [...this.dragons, ...this.tugarins]) if (!b.dead) this.killZombie(b);
+    for (const b of this.bosses.list) {
+      if (b.dead) continue;
+      b.lives = 0;
+      b.reviveT = 0;
+      this.killZombie(b);
+    }
+    this.spawner.forceChapter();
+  }
+
+  debugKillAll(): void {
+    for (const z of this.zombies) if (z.active && !z.dead) this.damageZombie(z, 1e9, z.x, z.y, 0, 'splash');
+  }
+
+  debugChest(): void {
+    this.spawnChest(this.player.x + 70, this.player.y + 10);
+  }
+
+  /** Жив ли хоть один босс (очередь боссов ждёт, пока все падут). */
+  bossesAlive(): boolean {
+    return this.dragons.some((d) => !d.dead) || this.tugarins.some((t) => !t.dead) || this.bosses.alive();
+  }
+
+  /** Призыв босса по виду (из очереди главы). */
+  spawnBoss(kind: BossKind, x: number, y: number, hpMul: number): void {
+    switch (kind) {
+      case 'gorynych':
+        this.spawnDragon(x, y, hpMul);
+        break;
+      case 'tugarin':
+        this.spawnTugarin(x, y, hpMul);
+        break;
+      case 'fused':
+        this.spawnDragon(x, y, hpMul, true);
+        break;
+      default: {
+        // картинки главы ещё грузятся (бывает только в режиме тестера) — подождём
+        if (!this.bosses.ready(kind)) {
+          const biome = BIOMES.find((b) => b.bosses.includes(kind));
+          if (biome) LazyAssets.ensure(this, biome.assets);
+          this.time.delayedCall(500, () => this.spawnBoss(kind, x, y, hpMul));
+          return;
+        }
+        const b = this.bosses.spawn(kind, x, y, hpMul);
+        if (b) {
+          this.sfx('roar', 0.65, kind === 'chernobog' ? 0.6 : 0.9);
+          this.cameras.main.shake(260, 0.004);
+        }
+      }
+    }
+  }
+
+  /** Огненный дождь: метка на земле, через t секунд туда падает пламя. */
+  addMeteor(x: number, y: number, t: number): void {
+    this.meteors.push({ x, y, t });
+  }
+
+  /** Переход в новую главу: затемнение, смена земли, декора и настроения, нечисть — с чистого листа. */
+  enterChapter(biome: BiomeDef, lap: number): void {
+    const cam = this.cameras.main;
+    cam.fadeOut(650, 0, 0, 0);
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => LazyAssets.ensure(this, biome.assets, () => this.afterFade(biome, lap)));
+  }
+
+  private afterFade(biome: BiomeDef, lap: number): void {
+    const cam = this.cameras.main;
+    {
+      // старая нечисть рассеивается вместе с прежней землёй
+      for (const z of this.zombies) {
+        if (!z.active) continue;
+        z.dead = true;
+        z.setActive(false).setVisible(false);
+      }
+      this.aliveZombies = 0;
+      this.meteors = [];
+      this.projectiles.clear();
+      this.applyBiome(biome, lap);
+      this.bus.emit('toast', lap > 0 ? `${biome.title} — круг ${lap + 1}` : biome.title);
+      cam.fadeIn(800, 0, 0, 0);
+    }
+    // следующая глава — фоном; атласы прошлых глав освобождаем (через паузу — вдруг кто-то ещё тает)
+    const next = BIOMES[(BIOMES.indexOf(biome) + 1) % BIOMES.length];
+    LazyAssets.ensure(this, next.assets);
+    this.time.delayedCall(5000, () => LazyAssets.release(this, [...biome.assets, ...next.assets]));
+  }
+
+  private applyBiome(biome: BiomeDef, lap: number): void {
+    const p = this.player;
+    this.biome = biome;
+    this.groundScale = biome.groundScale;
+    this.ground.setTexture(biome.ground).setTint(biome.groundTint).setScale(this.groundScale);
+    this.onResize();
+    this.cameras.main.setBackgroundColor(biome.bg);
+    this.decor.setKinds(biome.decor, p.x, p.y, (BIOMES.indexOf(biome) + 1) * 7919 + lap * 104729);
+    this.bus.emit('biome', biome);
   }
 
   spawnTugarin(x: number, y: number, hpMul: number): void {
@@ -605,7 +946,6 @@ export class GameScene extends Phaser.Scene {
   private updateDragons(dt: number): void {
     const p = this.player;
     const g = this.fireGfx;
-    g.clear();
     const decay = Math.exp(-6 * dt);
     for (const d of this.dragons) {
       if (d.dead) continue;
@@ -680,12 +1020,12 @@ export class GameScene extends Phaser.Scene {
       if (dist < DRAGON.ringRadius + 10) {
         // Вплотную: все головы вниз — огненное кольцо вокруг себя
         d.fireState = 'ringAim';
-        d.fireT = 0.9;
+        d.fireT = DRAGON.ringAim;
         d.fireAng = Math.PI / 2;
         this.sfx('roar', 0.45, 1.25);
       } else if (dist < DRAGON.fireRange * 1.15) {
         d.fireState = 'aim';
-        d.fireT = 0.85;
+        d.fireT = DRAGON.aimTime;
         d.fireHead = Phaser.Math.Between(0, 2);
         d.fireAng = ground().want;
       }
@@ -700,9 +1040,15 @@ export class GameScene extends Phaser.Scene {
     const half = DRAGON.fireHalfAngle;
     if (d.fireState === 'aim') {
       // Пока целится — доворачивает за богатырём (можно увернуться), а если тот забежал за спину — разворачивается
-      d.fireAng = d.turned ? want : Phaser.Math.Angle.RotateTo(d.fireAng, want, 1.2 * dt);
+      if (d.turned) {
+        // развернулся за спину — прицел заново, но с запасом времени на уклонение
+        d.fireAng = want;
+        d.fireT = Math.max(d.fireT, 0.6);
+      } else {
+        d.fireAng = Phaser.Math.Angle.RotateTo(d.fireAng, want, DRAGON.aimTurn * dt);
+      }
       d.turned = false;
-      const k = 1 - Math.max(0, d.fireT) / 0.85;
+      const k = 1 - Math.max(0, d.fireT) / DRAGON.aimTime;
       g.fillStyle(0xff3a1a, 0.12 + k * 0.18);
       g.slice(gx, gy, DRAGON.fireRange, ga - half, ga + half, false).fillPath();
       g.lineStyle(2, 0xff5a2a, 0.5 + k * 0.4);
@@ -732,12 +1078,8 @@ export class GameScene extends Phaser.Scene {
       const px = p.x - gx, py = p.y - gy;
       const pd = Math.hypot(px, py);
       const da = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(py, px) - ga));
-      if (pd < DRAGON.fireRange + PLAYER_BASE.hitRadius && (da < half || pd < 40) && this.invulnT <= 0) {
-        const dmg = p.takeDamage(Math.round(DRAGON.fireDmg * Math.sqrt(this.spawner.hpMul)));
-        if (dmg > 0) {
-          this.fx.number(p.x, p.y - p.tall - 4, dmg, '#ff8a3a', 18);
-          this.bus.emit('hurt');
-        }
+      if (pd < DRAGON.fireRange + PLAYER_BASE.hitRadius && (da < half || pd < 40)) {
+        this.hitPlayerHard(Math.round(DRAGON.fireDmg * this.spawner.dmgMul), 0.06, d);
       }
     }
     if (d.fireT <= 0) {
@@ -815,7 +1157,7 @@ export class GameScene extends Phaser.Scene {
             this.sfx('swing', 0.6, 0.6);
             const da = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(dy, dx) - t.aimAng));
             if (playing && dist < TUGARIN.slashRadius + PLAYER_BASE.hitRadius && (da < half || dist < 50)) {
-              this.hitPlayer(Math.round(TUGARIN.slashDmg * t.dmgMul), t);
+              this.hitPlayerHard(Math.round(TUGARIN.slashDmg * this.spawner.dmgMul), 0.2, t);
             }
             t.tstate = 'recover';
             t.stateT = 0.5;
@@ -848,7 +1190,7 @@ export class GameScene extends Phaser.Scene {
           if (Math.random() < 0.5) this.fx.puff(t.x, t.y - 6, 0xb89a70, 0.12, t.y - 1);
           if (playing && !t.dashHit && Math.hypot(p.x - t.x, p.y - t.y) < t.radius + PLAYER_BASE.hitRadius + 8) {
             t.dashHit = true;
-            this.hitPlayer(Math.round(TUGARIN.dashDmg * t.dmgMul), t);
+            this.hitPlayerHard(Math.round(TUGARIN.dashDmg * this.spawner.dmgMul), 0.25, t);
           }
           if (t.stateT <= 0 || dd < 6) {
             t.tstate = 'recover';
@@ -884,6 +1226,7 @@ export class GameScene extends Phaser.Scene {
   private killTugarin(t: Tugarin): void {
     const p = this.player;
     this.kills++;
+    this.bossKills++;
     t.tstate = 'recover';
     this.addXp(TUGARIN.xp * p.stats.xpMul);
     for (let i = 0; i < 8; i++) {
@@ -922,12 +1265,8 @@ export class GameScene extends Phaser.Scene {
         this.fx.ring(m.x, m.y, R, 0xffa040, 300);
         this.sfx('thunder', 0.35, 0.7);
         const ex = (p.x - m.x) / R, ey = (p.y - m.y) / (R * 0.7);
-        if (playing && ex * ex + ey * ey <= 1.15 && this.invulnT <= 0) {
-          const dmg = p.takeDamage(Math.round(DRAGON.ringDmg * 1.2 * Math.sqrt(this.spawner.hpMul)));
-          if (dmg > 0) {
-            this.fx.number(p.x, p.y - p.tall - 4, dmg, '#ff8a3a', 20);
-            this.bus.emit('hurt');
-          }
+        if (playing && ex * ex + ey * ey <= 1.15) {
+          this.hitPlayerHard(Math.round(DRAGON.ringDmg * 1.2 * this.spawner.dmgMul), 0.18, null);
         }
       }
     }
@@ -940,7 +1279,7 @@ export class GameScene extends Phaser.Scene {
     const R = DRAGON.ringRadius;
     const cy = d.y - 4;
     if (d.fireState === 'ringAim') {
-      const k = 1 - Math.max(0, d.fireT) / 0.9;
+      const k = 1 - Math.max(0, d.fireT) / DRAGON.ringAim;
       g.fillStyle(0xff3a1a, 0.1 + k * 0.2).fillEllipse(d.x, cy, R * 2, R * 1.4);
       g.lineStyle(3, 0xff5a2a, 0.5 + k * 0.45).strokeEllipse(d.x, cy, R * 2, R * 1.4);
       if (d.fireT <= 0) {
@@ -969,12 +1308,8 @@ export class GameScene extends Phaser.Scene {
     if (d.fireTick === 0) {
       d.fireTick = 1;
       const ex = (p.x - d.x) / R, ey = (p.y - cy) / (R * 0.7);
-      if (ex * ex + ey * ey <= 1.1 && this.invulnT <= 0) {
-        const dmg = p.takeDamage(Math.round(DRAGON.ringDmg * Math.sqrt(this.spawner.hpMul)));
-        if (dmg > 0) {
-          this.fx.number(p.x, p.y - p.tall - 4, dmg, '#ff8a3a', 20);
-          this.bus.emit('hurt');
-        }
+      if (ex * ex + ey * ey <= 1.1) {
+        this.hitPlayerHard(Math.round(DRAGON.ringDmg * this.spawner.dmgMul), 0.25, d);
       }
     }
     if (d.fireT <= 0) {
@@ -984,9 +1319,33 @@ export class GameScene extends Phaser.Scene {
     void dist;
   }
 
+  private killSpriteBoss(b: BossActor): void {
+    const p = this.player;
+    this.kills++;
+    this.bossKills++;
+    this.addXp(b.def.xp * p.stats.xpMul);
+    for (let i = 0; i < 10; i++) {
+      this.time.delayedCall(i * 60, () => this.fx.soul(b.x + Phaser.Math.Between(-40, 40), b.y - Phaser.Math.Between(40, b.figureH), p, -p.tall * 0.5, true));
+    }
+    this.fx.splat(b.x, b.y - 4, 1.8);
+    this.fx.ring(b.x, b.y, 200, 0xffd27a, 600);
+    if (this.chestWave !== this.spawner.bossWave) {
+      this.chestWave = this.spawner.bossWave;
+      this.spawnChest(b.x, b.y + 10, 'epic');
+    }
+    this.pickups.spawn(b.x - 20, b.y + 6, 25);
+    this.cameras.main.shake(300, 0.006);
+    this.sfx('roar', 0.6, 0.8);
+    this.bus.emit('toast', `${b.def.name} повержен!`);
+    b.die(() => {
+      this.bosses.list = this.bosses.list.filter((x) => x !== b);
+    });
+  }
+
   private killDragon(d: Dragon): void {
     const p = this.player;
     this.kills++;
+    this.bossKills++;
     d.fireState = 'idle';
     this.fireGfx.clear();
     this.addXp(d.ztype.xp * p.stats.xpMul);
@@ -1017,6 +1376,8 @@ export class GameScene extends Phaser.Scene {
    */
   damageZombie(z: Enemy, base: number, fromX: number, fromY: number, knock: number, kind: DamageKind = 'hit'): void {
     if (z.dead) return;
+    const ba = z as Partial<BossActor>;
+    if ((ba.invulnT ?? 0) > 0 || ba.hidden || (ba.reviveT ?? 0) > 0) return;
     const p = this.player;
     // Богатырская затрещина (крит)
     const crit = p.stats.critChance > 0 && Math.random() < p.stats.critChance;
@@ -1117,6 +1478,11 @@ export class GameScene extends Phaser.Scene {
       this.killTugarin(z);
       return;
     }
+    const boss = this.bosses.list.find((b) => b === z);
+    if (boss) {
+      if (!this.bosses.tryRevive(boss)) this.killSpriteBoss(boss);
+      return;
+    }
     if (!(z instanceof Zombie)) return;
     z.die();
     this.aliveZombies--;
@@ -1212,6 +1578,7 @@ export class GameScene extends Phaser.Scene {
 
   private recalcStats(): void {
     const s = baseStats();
+    applyTalents(s);
     for (const [id, lvl] of this.levels) ABILITY_BY_ID.get(id)?.apply?.(s, lvl);
     for (const id of this.items) ITEM_BY_ID.get(id)?.apply?.(s);
     this.player.setStats(s);
@@ -1255,15 +1622,48 @@ export class GameScene extends Phaser.Scene {
       this.sfx('levelup', 0.6);
       return;
     }
+    if (this.freeRevives > 0) {
+      this.freeRevives--;
+      const p = this.player;
+      p.revive();
+      p.hp = Math.round(p.stats.maxHp * 0.5);
+      this.fx.ring(p.x, p.y, 280, 0x9dffb0, 600);
+      for (const z of this.queryZombies(p.x, p.y, 280)) this.damageZombie(z, 50, p.x, p.y, 700, 'splash');
+      this.bus.emit('toast', 'Второе дыхание!');
+      this.sfx('levelup', 0.6);
+      return;
+    }
     this.state = 'dead';
     this.player.die();
     this.sfx('death', 0.6);
     Yandex.gameplayStop();
     this.time.delayedCall(1000, () => {
-      const stats: RunStats = { time: this.elapsed, kills: this.kills, level: this.level, canRevive: this.revivesLeft > 0 };
+      const stats: RunStats = { time: this.elapsed, kills: this.kills, level: this.level, canRevive: this.revivesLeft > 0, ...this.awardGold() };
       this.bus.emit('gameover', stats);
       this.scene.pause();
     });
+  }
+
+  /** Начислить злато за забег (только прибавку с прошлого начисления) и обновить рекорды. */
+  private awardGold(): { gold: number; totalGold: number } {
+    const chapters = this.spawner.chapter + this.spawner.lap * BIOMES.length;
+    const earned = runGold(this.elapsed, this.kills, this.bossKills, chapters);
+    const delta = Math.max(0, earned - this.goldAwarded);
+    const first = this.goldAwarded === 0;
+    this.goldAwarded = earned;
+    Save.update((d) => {
+      d.gold += delta;
+      d.bestTime = Math.max(d.bestTime, this.elapsed);
+      d.bestKills = Math.max(d.bestKills, this.kills);
+      if (first) d.runs++;
+    });
+    return { gold: earned, totalGold: Save.get().gold };
+  }
+
+  /** Выход в меню посреди забега: злато за пройденное начисляется (после смерти уже начислено). */
+  quitRun(): void {
+    if (this.state !== 'dead') this.awardGold();
+    Yandex.gameplayStop();
   }
 
   /** Воскрешение (за рекламу): полное здоровье + ударная волна вокруг. */

@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
-import { DPR } from './config';
+import { DPR, ZOMBIES } from './config';
+import { BIOMES } from './biomes';
+import { BOSSES } from './bosses';
+import { DEBUG_ALLOWED } from './debug';
+import { LazyAssets } from './mobs';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { MenuScene } from './scenes/MenuScene';
@@ -35,3 +39,5 @@ window.addEventListener('resize', () => {
 
 // Для отладки из консоли
 (window as unknown as { game: Phaser.Game }).game = game;
+// Режим тестера: реестры нечисти, боссов, глав и загрузчик — для проверок из консоли и автотестов
+if (DEBUG_ALLOWED) (window as unknown as { dbg: object }).dbg = { ZOMBIES, BOSSES, BIOMES, LazyAssets };

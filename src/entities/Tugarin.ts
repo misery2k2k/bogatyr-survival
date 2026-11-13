@@ -20,11 +20,11 @@ export const TUGARIN = {
   /** Ширина сектора взмаха, рад (~150°). */
   slashArc: 2.6,
   slashCd: 2.6,
-  slashWindup: 0.6,
+  slashWindup: 0.85,
   dashMin: 230,
   dashMax: 560,
   dashCd: 5.5,
-  dashAim: 0.75,
+  dashAim: 1.05,
   dashSpeed: 660,
 } satisfies EnemyKind & Record<string, number | string>;
 

@@ -4,8 +4,14 @@ import { mulberry32 } from '../textures';
 
 const CHUNK = 640;
 
-interface DecorKind {
+export interface DecorKind {
   key: string;
+  /** Кадр атласа (готовый декор глав лежит в атласе 'decor'). */
+  frame?: string;
+  /** Пикселей текстуры на мировой пиксель (процедурные рисуются в TEX_RES, готовые спрайты — как есть). */
+  res?: number;
+  /** Оттенок (умножение) — чтобы перекрасить готовый объект под настроение главы. */
+  tint?: number;
   min: number;
   max: number;
   /** Лежит на земле (рисуется под всеми) или стоит (сортируется по y). */
@@ -15,7 +21,8 @@ interface DecorKind {
   chance?: number;
 }
 
-const KINDS: DecorKind[] = [
+/** Лес первой главы. */
+export const FOREST_DECOR: DecorKind[] = [
   { key: 'tuft', min: 5, max: 9, flat: true, scale: [0.8, 1.2] },
   { key: 'flowers', min: 1, max: 4, flat: true, scale: [0.8, 1.1] },
   { key: 'mushroom', min: 0, max: 2, flat: false, scale: [0.9, 1.2] },
@@ -33,8 +40,24 @@ const KINDS: DecorKind[] = [
 /** Бесконечный лес вокруг: декор генерируется чанками по сиду и удаляется вдали от камеры. */
 export class Decor {
   private chunks = new Map<string, Phaser.GameObjects.Image[]>();
+  private kinds: DecorKind[] = FOREST_DECOR;
+  /** Поляна без крупных объектов (вокруг точки старта или места перехода в новую главу). */
+  private clearX = 0;
+  private clearY = 0;
+  /** Сид меняется вместе с главой, чтобы новые места не повторяли старые. */
+  private seed = 0x5bd1e995;
 
   constructor(private readonly scene: Phaser.Scene) {}
+
+  /** Сменить набор декора (новая глава): старые чанки убираются, новые строятся вокруг. */
+  setKinds(kinds: DecorKind[], clearX: number, clearY: number, seed: number): void {
+    for (const imgs of this.chunks.values()) for (const im of imgs) im.destroy();
+    this.chunks.clear();
+    this.kinds = kinds;
+    this.clearX = clearX;
+    this.clearY = clearY;
+    this.seed = seed;
+  }
 
   update(view: Phaser.Geom.Rectangle): void {
     const m = CHUNK * 0.5;
@@ -56,21 +79,23 @@ export class Decor {
   }
 
   private build(cx: number, cy: number): Phaser.GameObjects.Image[] {
-    const rnd = mulberry32((cx * 73856093) ^ (cy * 19349663) ^ 0x5bd1e995);
+    const rnd = mulberry32((cx * 73856093) ^ (cy * 19349663) ^ this.seed);
     const out: Phaser.GameObjects.Image[] = [];
-    for (const kind of KINDS) {
+    for (const kind of this.kinds) {
       const roll = rnd();
+      if (!this.scene.textures.exists(kind.key)) continue;
       const n = kind.chance !== undefined && roll > kind.chance ? 0 : kind.min + Math.floor(rnd() * (kind.max - kind.min + 1));
       for (let i = 0; i < n; i++) {
         const x = (cx + rnd()) * CHUNK, y = (cy + rnd()) * CHUNK;
         // Поляна в точке старта — без крупных объектов
-        if (!kind.flat && Math.hypot(x, y) < 260) continue;
-        const s = (kind.scale[0] + rnd() * (kind.scale[1] - kind.scale[0])) / TEX_RES;
+        if (!kind.flat && Math.hypot(x - this.clearX, y - this.clearY) < 260) continue;
+        const s = (kind.scale[0] + rnd() * (kind.scale[1] - kind.scale[0])) / (kind.res ?? TEX_RES);
         const im = this.scene.add
-          .image(x, y, kind.key)
+          .image(x, y, kind.key, kind.frame)
           .setOrigin(0.5, kind.flat ? 0.5 : 0.96)
           .setScale(rnd() < 0.5 ? -s : s, s)
           .setDepth(kind.flat ? -9000 + y * 0.001 : y);
+        if (kind.tint !== undefined) im.setTint(kind.tint);
         out.push(im);
       }
     }

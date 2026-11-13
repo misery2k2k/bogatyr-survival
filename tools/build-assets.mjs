@@ -6,6 +6,8 @@ import { PNG } from 'pngjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as zr from './zombie-recolor.mjs';
+import { bbox, downscale, feetPoint } from './img.mjs';
+import { buildMobs } from './build-mobs.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const raw = (...p) => path.join(root, 'raw-assets', ...p);
@@ -16,6 +18,9 @@ for (const f of ['bogatyr.png', 'bogatyr.xml', 'zombie.png', 'zombie.xml']) fs.r
 
 // --- Зомби: GameArt2D «The Zombie» (CC0) → перекраска + атлас ---
 buildZombieAtlas();
+
+// --- Нечисть и боссы глав на готовых спрайтах, декор и земля глав ---
+buildMobs(root);
 
 // --- Эффекты (копируем только используемые в игре — см. FX в src/scenes/BootScene.ts) ---
 const USED_FX = ['slash_03', 'star_04', 'smoke_04', 'light_01', 'twirl_02', 'scorch_02', 'circle_05'];
@@ -34,12 +39,8 @@ for (const [dir, list] of Object.entries(KEEP_OGG)) {
 }
 for (const f of fs.readdirSync(raw('sfx-soft'))) if (f.endsWith('.wav')) fs.copyFileSync(raw('sfx-soft', f), out('audio', f));
 
-// --- Музыка: mp3 + список треков (грузится лениво, по выбору в настройках) ---
+// Музыки нет (выпилена по просьбе); старую папку чистим
 fs.rmSync(out('music'), { recursive: true, force: true });
-fs.mkdirSync(out('music'), { recursive: true });
-const tracks = JSON.parse(fs.readFileSync(raw('music', 'tracks.json'), 'utf8'));
-for (const t of tracks) fs.copyFileSync(raw('music', `${t.id}.mp3`), out('music', `${t.id}.mp3`));
-fs.writeFileSync(out('music', 'tracks.json'), JSON.stringify(tracks.map(({ id, title, author, license }) => ({ id, title, author, license }))));
 
 console.log('assets ready');
 
@@ -156,36 +157,6 @@ function buildZombieAtlas() {
   console.log(`zombies atlas ${atlasW}x${atlasH}, ${frames.length} frames, origins`, origins);
 }
 
-function bbox(png) {
-  let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
-  const { width: W, height: H, data: d } = png;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      if (d[(y * W + x) * 4 + 3] > 8) {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
-      }
-    }
-  }
-  return x1 < 0 ? null : { x0, y0, x1, y1 };
-}
-
-/** Середина ступней: центр непрозрачных пикселей в нижних 12 px силуэта. */
-function feetPoint(png, b) {
-  let sx = 0, n = 0;
-  for (let y = b.y1 - 12; y <= b.y1; y++) {
-    for (let x = b.x0; x <= b.x1; x++) {
-      if (png.data[(y * png.width + x) * 4 + 3] > 128) {
-        sx += x;
-        n++;
-      }
-    }
-  }
-  return { x: n ? sx / n : (b.x0 + b.x1) / 2, y: b.y1 };
-}
-
 function recolorPng(png, isFoot, rule) {
   const { width: W, data: d } = png;
   for (let i = 0; i < d.length; i += 4) {
@@ -195,48 +166,6 @@ function recolorPng(png, isFoot, rule) {
     const res = rule(h, s, v, isFoot(p % W, Math.floor(p / W)));
     if (res) [d[i], d[i + 1], d[i + 2]] = zr.hsvToRgb(res[0], res[1], res[2]);
   }
-}
-
-/** Уменьшение с усреднением по площади (в premultiplied alpha, без тёмных ореолов). */
-function downscale(src, k) {
-  const W = Math.max(1, Math.round(src.width * k)), H = Math.max(1, Math.round(src.height * k));
-  const sx = src.width / W, sy = src.height / H;
-  const spans = (n, step, max) =>
-    Array.from({ length: n }, (_, i) => {
-      const a = i * step, b = Math.min(max, (i + 1) * step);
-      const out = [];
-      for (let p = Math.floor(a); p < Math.ceil(b); p++) {
-        const w = Math.min(b, p + 1) - Math.max(a, p);
-        if (w > 0) out.push([p, w]);
-      }
-      return out;
-    });
-  const xs = spans(W, sx, src.width), ys = spans(H, sy, src.height);
-  const dst = new PNG({ width: W, height: H });
-  const s = src.data;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      let r = 0, g = 0, b = 0, a = 0, wsum = 0;
-      for (const [py, wy] of ys[y]) {
-        for (const [px, wx] of xs[x]) {
-          const w = wx * wy, i = (py * src.width + px) * 4, al = s[i + 3] * w;
-          r += s[i] * al;
-          g += s[i + 1] * al;
-          b += s[i + 2] * al;
-          a += al;
-          wsum += w;
-        }
-      }
-      const o = (y * W + x) * 4;
-      if (a > 0) {
-        dst.data[o] = Math.round(r / a);
-        dst.data[o + 1] = Math.round(g / a);
-        dst.data[o + 2] = Math.round(b / a);
-      }
-      dst.data[o + 3] = Math.round(a / wsum);
-    }
-  }
-  return dst;
 }
 
 function shelfPack(frames, W, H, pad) {

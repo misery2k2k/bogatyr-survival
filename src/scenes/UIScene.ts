@@ -2,12 +2,14 @@ import Phaser from 'phaser';
 import { ABILITY_BY_ID, abilityDesc } from '../abilities/defs';
 import type { AbilityId } from '../abilities/types';
 import { COLORS, DPR, FONT_TITLE, FONT_UI } from '../config';
-import { ITEM_BY_ID, RARITY, type ItemId } from '../items';
+import { ITEMS, ITEM_BY_ID, RARITY, type ItemId } from '../items';
+import { t, tx } from '../i18n';
 import { DEBUG_ALLOWED } from '../debug';
 import { DebugPanel } from '../ui/DebugPanel';
 import { SettingsPanel } from '../ui/SettingsPanel';
-import { Yandex } from '../yandex';
-import type { GameScene, RunStats } from './GameScene';
+import { Platform } from '../platform';
+import { Save } from '../save';
+import { RAGE_TIME, type GameScene, type RunStats } from './GameScene';
 
 type Text = Phaser.GameObjects.Text;
 
@@ -26,6 +28,8 @@ export class UIScene extends Phaser.Scene {
   private timerText!: Text;
   private killsText!: Text;
   private toastText!: Text;
+  /** Подсказка поверх окон (реклама недоступна, не хватает злата) — внизу экрана, чтобы не закрывать окно. */
+  private modalNote: Phaser.GameObjects.Text | null = null;
   private icons!: Phaser.GameObjects.Container;
   private vignette!: Phaser.GameObjects.Image;
   private joyBase!: Phaser.GameObjects.Image;
@@ -42,10 +46,13 @@ export class UIScene extends Phaser.Scene {
   private modalStats: RunStats | null = null;
   private modalOpenedAt = 0;
   private busy = false;
+  /** В этом сундуке уже брали «Другой предмет». */
+  private chestRerolled = false;
   private gear!: Phaser.GameObjects.Image;
   private settings: SettingsPanel | null = null;
   private settingsPaused = false;
   private bossText!: Text;
+  private rageText!: Text;
   private shade!: Phaser.GameObjects.Image;
   /** Цветовое настроение главы (умножение поверх мира). */
   private mood!: Phaser.GameObjects.Rectangle;
@@ -88,6 +95,7 @@ export class UIScene extends Phaser.Scene {
     this.timerText = txt(26).setOrigin(0.5, 0);
     this.toastText = txt(30, COLORS.goldText, FONT_TITLE).setOrigin(0.5).setAlpha(0);
     this.bossText = txt(15, '#ffb08a').setOrigin(0.5, 1).setVisible(false);
+    this.rageText = txt(14, '#ffd0b0').setOrigin(0.5, 0.5).setVisible(false);
     // Стрелка к ближайшему сундуку за краем экрана
     this.chestArrowGfx = this.add.graphics();
     this.chestArrow = this.add.container(0, 0, [this.chestArrowGfx, this.add.image(0, 0, 'chest').setOrigin(0.5)]).setVisible(false);
@@ -115,7 +123,9 @@ export class UIScene extends Phaser.Scene {
     });
 
     this.scale.on('resize', this.layout, this);
+    const offAds = Platform.onAdsChange(() => this.refreshModal());
     this.events.once('shutdown', () => {
+      offAds();
       bus.off('levelup', this.onLevelUp, this);
       bus.off('gameover', this.onGameOver, this);
       bus.off('hurt', this.onHurt, this);
@@ -150,17 +160,48 @@ export class UIScene extends Phaser.Scene {
     this.mood.setSize(W, H);
     this.debug?.resize(s);
     this.bossText.setFontSize(15 * s).setStroke('#140b04', 4 * s).setPosition(W / 2, 74 * s);
+    this.rageText.setFontSize(14 * s).setStroke('#140b04', 4 * s).setPosition(W / 2, 58 * s);
     this.gear.setDisplaySize(34 * s, 34 * s).setPosition(W - 10 * s - 17 * s, 84 * s);
     if (this.settings) {
       this.settings.destroy();
-      this.settings = new SettingsPanel(this, s, () => this.onSettingsClosed(), () => void this.exitToMenu());
+      this.settings = new SettingsPanel(this, s, () => this.onSettingsClosed(), () => void this.exitToMenu(), () => this.reopenSettings());
     }
     this.joyBase.setScale(s * 0.8);
     this.joyKnob.setScale(s * 0.8);
     this.rebuildIcons();
+    this.refreshModal();
+  }
+
+  /** Перерисовать открытое окно (новый размер экрана, реклама стала недоступна…). */
+  private refreshModal(): void {
     if (this.modalKind === 'levelup') this.showLevelUp(this.modalChoices, false);
     else if (this.modalKind === 'gameover' && this.modalStats) this.showGameOver(this.modalStats, false);
     else if (this.modalKind === 'chest' && this.modalItem) this.showChest(this.modalItem, false);
+  }
+
+  /** Подсказка поверх окна, внизу экрана: появляется и через пару секунд гаснет. */
+  private note(msg: string): void {
+    const W = this.scale.width, H = this.scale.height, s = this.s;
+    this.modalNote?.destroy();
+    const n = this.add
+      .text(W / 2, H - 22 * s, msg, { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${18 * s}px`, color: '#ffe6a8', stroke: '#140b04', strokeThickness: 5 * s, align: 'center', wordWrap: { width: W - 30 * s } })
+      .setOrigin(0.5, 1)
+      .setDepth(14000);
+    this.modalNote = n;
+    this.tweens.add({ targets: n, alpha: 0, delay: 2400, duration: 500, onComplete: () => n.destroy() });
+  }
+
+  /** Пояснение, почему нет кнопок «за рекламу» (площадка просит не прятать их молча). */
+  private adsNotice(): string {
+    return Platform.adsOff === 'adblock' ? t('ad.offAdblock') : t('ad.offDisabled');
+  }
+
+  /** Мелкая надпись-пояснение в окне. */
+  private noteText(x: number, y: number, msg: string, width: number): Phaser.GameObjects.Text {
+    const s = this.s;
+    return this.add
+      .text(x, y, msg, { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${13 * s}px`, color: '#d8b8a0', stroke: '#140b04', strokeThickness: 3 * s, align: 'center', wordWrap: { width } })
+      .setOrigin(0.5);
   }
 
   update(): void {
@@ -172,9 +213,16 @@ export class UIScene extends Phaser.Scene {
     this.hud.fillStyle(0x0b0f08, 0.8).fillRect(0, 0, W, h + 4 * s);
     this.hud.fillStyle(COLORS.xp, 1).fillRect(2 * s, 2 * s, (W - 4 * s) * k, h);
     this.hud.fillStyle(0xffffff, 0.28).fillRect(2 * s, 2 * s, (W - 4 * s) * k, h * 0.35);
-    this.levelText.setText(`Ур. ${g.level}`);
-    this.killsText.setText(`Сражено: ${g.kills}`);
+    this.levelText.setText(t('hud.level', { n: g.level }));
+    this.killsText.setText(t('hud.kills', { n: g.kills }));
     this.timerText.setText(fmtTime(g.elapsed));
+    this.rageText.setVisible(g.rageT > 0);
+    if (g.rageT > 0) {
+      const rw = 170 * s, rh = 16 * s, rx = (W - rw) / 2, ry = 50 * s;
+      this.hud.fillStyle(0x000000, 0.65).fillRoundedRect(rx - 2 * s, ry - 2 * s, rw + 4 * s, rh + 4 * s, 6 * s);
+      this.hud.fillStyle(0xd8401e, 1).fillRoundedRect(rx, ry, Math.max(1, rw * (g.rageT / RAGE_TIME)), rh, 5 * s);
+      this.rageText.setText(t('hud.rage', { n: Math.ceil(g.rageT) })).setY(ry + rh / 2);
+    }
 
     // Полоска здоровья Змея Горыныча (ближайшего живого)
     const bosses = g.bossList();
@@ -186,7 +234,7 @@ export class UIScene extends Phaser.Scene {
       const by = this.iconsRight > bx ? Math.max(80 * s, this.iconsBottom + 22 * s) : 80 * s;
       this.bossText.setY(by - 4 * s);
       const others = bosses.length - 1;
-      this.bossText.setText(others > 0 ? `${boss.ztype.name} (+${others})` : boss.ztype.name);
+      this.bossText.setText(others > 0 ? `${tx(boss.ztype.name)} (+${others})` : tx(boss.ztype.name));
       this.hud.fillStyle(0x000000, 0.7).fillRoundedRect(bx - 2 * s, by - 2 * s, bw + 4 * s, bh + 4 * s, 4 * s);
       this.hud.fillStyle(0x3fae3a, 1).fillRoundedRect(bx, by, Math.max(1, bw * Phaser.Math.Clamp(boss.hp / boss.maxHp, 0, 1)), bh, 3 * s);
       this.hud.fillStyle(0xffffff, 0.25).fillRect(bx, by, bw * Phaser.Math.Clamp(boss.hp / boss.maxHp, 0, 1), bh * 0.35);
@@ -236,9 +284,9 @@ export class UIScene extends Phaser.Scene {
     this.settingsPaused = this.g.state === 'play';
     if (this.settingsPaused) {
       this.g.scene.pause();
-      Yandex.gameplayStop();
+      Platform.gameplayStop();
     }
-    this.settings = new SettingsPanel(this, this.s, () => this.onSettingsClosed(), () => void this.exitToMenu());
+    this.settings = new SettingsPanel(this, this.s, () => this.onSettingsClosed(), () => void this.exitToMenu(), () => this.reopenSettings());
   }
 
   /** Выйти из забега в главное меню (злато за пройденное начисляется). */
@@ -246,7 +294,6 @@ export class UIScene extends Phaser.Scene {
     if (this.busy) return;
     this.busy = true;
     this.g.quitRun();
-    await Yandex.showFullscreenAd(this.pauseForAd, this.resumeAfterAd);
     this.busy = false;
     this.settings?.destroy();
     this.settings = null;
@@ -256,11 +303,17 @@ export class UIScene extends Phaser.Scene {
     this.scene.start('Menu');
   }
 
+  /** Сменили язык в настройках — окно пересоздаётся на новом языке (интерфейс боя обновится сам). */
+  private reopenSettings(): void {
+    this.settings?.destroy();
+    this.settings = new SettingsPanel(this, this.s, () => this.onSettingsClosed(), () => void this.exitToMenu(), () => this.reopenSettings());
+  }
+
   private onSettingsClosed(): void {
     this.settings = null;
     if (this.settingsPaused && this.g.state === 'play') {
       this.g.scene.resume();
-      Yandex.gameplayStart();
+      Platform.gameplayStart();
     }
     this.settingsPaused = false;
   }
@@ -403,7 +456,7 @@ export class UIScene extends Phaser.Scene {
       this.takeChest();
       return;
     }
-    if (this.modalKind === 'levelup' && this.time.now - this.modalOpenedAt > 250) {
+    if (this.modalKind === 'levelup' && this.time.now - this.modalOpenedAt > (this.g.prepLeft > 0 ? 120 : 250)) {
       const idx = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code);
       if (idx >= 0 && idx < this.modalChoices.length) this.pick(this.modalChoices[idx]);
     }
@@ -449,26 +502,89 @@ export class UIScene extends Phaser.Scene {
       for (let i = 0; i < n; i++) pos.push({ x: (W - cw) / 2, y: y0 + i * (ch + gap) });
     }
 
+    // Подготовка к поздней главе: умения выбираются подряд, есть счётчик и «Остальное — случайно»
+    const prep = this.g.prepLeft > 0;
+    // в подготовке после первого окна — без долгой анимации, чтобы выбирать быстро
+    const quick = prep && this.g.prepLeft < this.g.prepTotal;
     const title = this.add
-      .text(W / 2, pos[0].y - 36 * s, 'Новый уровень!', {
+      .text(W / 2, pos[0].y - (prep ? 50 : 36) * s, prep ? t('lvl.prep') : t('lvl.title'), {
         fontFamily: FONT_TITLE,
-        fontSize: `${36 * s}px`,
+        fontSize: `${(prep ? 32 : 36) * s}px`,
         color: COLORS.goldText,
         stroke: '#2a1405',
         strokeThickness: 7 * s,
       })
       .setOrigin(0.5, 1);
     c.add(title);
+    if (prep) {
+      c.add(
+        this.add
+          .text(W / 2, pos[0].y - 16 * s, t('lvl.prepLeft', { left: this.g.prepLeft, total: this.g.prepTotal }), {
+            fontFamily: FONT_UI,
+            fontStyle: 'bold',
+            fontSize: `${16 * s}px`,
+            color: '#ffffff',
+            stroke: '#140b04',
+            strokeThickness: 4 * s,
+          })
+          .setOrigin(0.5, 1),
+      );
+      const last = pos[pos.length - 1];
+      const bw = Math.min(W - 40 * s, 300 * s), bh = 44 * s;
+      const by = (landscape ? last.y + ch : last.y + ch) + 18 * s;
+      c.add(
+        this.makeButton(t('lvl.restRandom'), W / 2, Math.min(by, H - bh - 10 * s), bw, bh, 0x5a4636, () => {
+          this.closeModal();
+          this.g.autoRest();
+        }),
+      );
+    }
+
+    if (!prep && Platform.adsOff) {
+      const last = pos[pos.length - 1];
+      c.add(this.noteText(W / 2, Math.min(last.y + ch + 34 * s, H - 24 * s), this.adsNotice(), W - 40 * s));
+    } else if (!prep) {
+      const fmt = (t: number) => {
+        const left = Math.ceil(t);
+        return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+      };
+      // слоты: «Буйство» (с 45-й секунды) и «Другие умения» — кнопка или таймер до следующего раза
+      const slots: { label: string; color: number; fn: (() => void) | null }[] = [];
+      if (this.g.elapsed > 45) {
+        if (this.g.rageReady) slots.push({ label: t('lvl.rage'), color: 0xa8341a, fn: () => void this.offerRage() });
+        else if (this.g.rageCd > 0) slots.push({ label: t('lvl.rageIn', { t: fmt(this.g.rageCd) }), color: 0, fn: null });
+      }
+      if (this.g.rerollCd <= 0) slots.push({ label: t('lvl.reroll'), color: 0x5a4636, fn: () => void this.rerollSkills() });
+      else slots.push({ label: t('lvl.rerollIn', { t: fmt(this.g.rerollCd) }), color: 0, fn: null });
+      const last = pos[pos.length - 1];
+      const n = slots.length;
+      const bw = Math.min((W - 40 * s - 12 * s * (n - 1)) / n, 300 * s), bh = 44 * s;
+      const by = Math.min(last.y + ch + 18 * s, H - bh - 10 * s);
+      const x0 = W / 2 - (n * bw + (n - 1) * 12 * s) / 2;
+      slots.forEach((sl, i) => {
+        const cx = x0 + i * (bw + 12 * s) + bw / 2;
+        if (sl.fn) c.add(this.makeButton(sl.label, cx, by, bw, bh, sl.color, sl.fn));
+        else
+          c.add(
+            this.add
+              .text(cx, by + bh / 2, sl.label, { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${14 * s}px`, color: '#d8b8a0', stroke: '#140b04', strokeThickness: 3 * s })
+              .setOrigin(0.5),
+          );
+      });
+    }
 
     choices.forEach((id, i) => {
       const card = this.makeCard(id, i, pos[i].x, pos[i].y, cw, ch, landscape);
       c.add(card);
-      if (animate) {
+      if (animate && quick) {
+        card.setAlpha(0.3);
+        this.tweens.add({ targets: card, alpha: 1, duration: 120 });
+      } else if (animate) {
         card.setAlpha(0).setY(card.y + 30 * s);
         this.tweens.add({ targets: card, alpha: 1, y: pos[i].y, duration: 260, delay: 70 * i, ease: 'Back.easeOut' });
       }
     });
-    if (animate) {
+    if (animate && !quick) {
       title.setScale(0.6);
       this.tweens.add({ targets: title, scale: 1, duration: 300, ease: 'Back.easeOut' });
     }
@@ -491,9 +607,9 @@ export class UIScene extends Phaser.Scene {
     draw(false);
     card.add(bg);
 
-    const badgeText = def.kind === 'consumable' ? 'Угощение' : cur === 0 ? 'Новое!' : `Ур. ${next}`;
+    const badgeText = def.kind === 'consumable' ? t('card.treat') : cur === 0 ? t('card.new') : t('card.lvl', { n: next });
     const badgeColor = cur === 0 && def.kind !== 'consumable' ? '#b3261e' : '#5a3a1a';
-    const kindText = def.kind === 'weapon' ? 'оружие' : def.kind === 'passive' ? 'умение' : '';
+    const kindText = def.kind === 'weapon' ? t('card.weapon') : def.kind === 'passive' ? t('card.skill') : '';
 
     const nameStyle = { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${20 * s}px`, color: COLORS.ink };
     const descStyle = { fontFamily: FONT_UI, fontSize: `${15 * s}px`, color: '#4a2f1a' };
@@ -501,7 +617,7 @@ export class UIScene extends Phaser.Scene {
 
     if (vertical) {
       const icon = this.add.image(w / 2, 58 * s, def.icon).setDisplaySize(72 * s, 72 * s);
-      const name = this.add.text(w / 2, 104 * s, def.name, { ...nameStyle, align: 'center', wordWrap: { width: w - 24 * s } }).setOrigin(0.5, 0);
+      const name = this.add.text(w / 2, 104 * s, tx(def.name), { ...nameStyle, align: 'center', wordWrap: { width: w - 24 * s } }).setOrigin(0.5, 0);
       const badge = this.add.text(w / 2, 14 * s, badgeText, smallStyle).setOrigin(0.5, 0);
       const desc = this.add
         .text(w / 2, name.y + name.height + 10 * s, abilityDesc(def, next), { ...descStyle, align: 'center', wordWrap: { width: w - 28 * s } })
@@ -509,12 +625,12 @@ export class UIScene extends Phaser.Scene {
       card.add([icon, name, badge, desc]);
     } else {
       const icon = this.add.image(18 * s + 34 * s, h / 2, def.icon).setDisplaySize(64 * s, 64 * s);
-      const tx = 100 * s;
-      const name = this.add.text(tx, 14 * s, def.name, nameStyle);
+      const textX = 100 * s;
+      const name = this.add.text(textX, 14 * s, tx(def.name), nameStyle);
       const badge = this.add.text(w - 14 * s, 16 * s, badgeText, smallStyle).setOrigin(1, 0);
-      const desc = this.add.text(tx, 14 * s + name.height + 6 * s, abilityDesc(def, next), {
+      const desc = this.add.text(textX, 14 * s + name.height + 6 * s, abilityDesc(def, next), {
         ...descStyle,
-        wordWrap: { width: w - tx - 16 * s },
+        wordWrap: { width: w - textX - 16 * s },
       });
       card.add([icon, name, badge, desc]);
     }
@@ -557,6 +673,7 @@ export class UIScene extends Phaser.Scene {
 
   private onChest(id: ItemId): void {
     this.releaseJoystick();
+    this.chestRerolled = false;
     this.showChest(id, true);
   }
 
@@ -583,8 +700,10 @@ export class UIScene extends Phaser.Scene {
     this.modal = c;
     c.add(this.add.rectangle(0, 0, W, H, 0x000000, 0.68).setOrigin(0).setInteractive());
 
+    // «Другой предмет» за рекламу — раз за сундук, если есть из чего выбирать
+    const canReroll = !this.chestRerolled && this.g.items.length < ITEMS.length - 1 && !Platform.adsOff;
     const cw = Math.min(W - 40 * s, 330 * s), ch = 320 * s;
-    const cx = W / 2, cy = H / 2 + 18 * s;
+    const cx = W / 2, cy = H / 2 + 18 * s - (canReroll ? 30 * s : 0);
 
     // Лучи цвета редкости за карточкой
     const rays = this.add.image(cx, cy - 40 * s, 'scorch_02').setBlendMode(Phaser.BlendModes.ADD).setTint(rar.color).setAlpha(0.75);
@@ -596,7 +715,7 @@ export class UIScene extends Phaser.Scene {
 
     c.add(
       this.add
-        .text(cx, cy - ch / 2 - 16 * s, 'Сундук!', {
+        .text(cx, cy - ch / 2 - 16 * s, t('chest.title'), {
           fontFamily: FONT_TITLE,
           fontSize: `${38 * s}px`,
           color: COLORS.goldText,
@@ -614,23 +733,27 @@ export class UIScene extends Phaser.Scene {
     bg.lineStyle(1.5 * s, rar.color, 0.6).strokeRoundedRect(-cw / 2 + 8 * s, -ch / 2 + 8 * s, cw - 16 * s, ch - 16 * s, 11 * s);
     card.add(bg);
     const rarText = this.add
-      .text(0, -ch / 2 + 16 * s, rar.name, { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${17 * s}px`, color: rar.text, stroke: '#2a1405', strokeThickness: 4 * s })
+      .text(0, -ch / 2 + 16 * s, tx(rar.name), { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${17 * s}px`, color: rar.text, stroke: '#2a1405', strokeThickness: 4 * s })
       .setOrigin(0.5, 0);
     const iconBg = this.add.graphics();
     iconBg.fillStyle(rar.color, 0.18).fillCircle(0, -ch / 2 + 98 * s, 50 * s);
     iconBg.lineStyle(2 * s, rar.color, 0.7).strokeCircle(0, -ch / 2 + 98 * s, 50 * s);
     const icon = this.add.image(0, -ch / 2 + 98 * s, `item-${id}`).setDisplaySize(84 * s, 84 * s);
     const name = this.add
-      .text(0, -ch / 2 + 160 * s, def.name, { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${23 * s}px`, color: COLORS.ink, align: 'center', wordWrap: { width: cw - 30 * s } })
+      .text(0, -ch / 2 + 160 * s, tx(def.name), { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${23 * s}px`, color: COLORS.ink, align: 'center', wordWrap: { width: cw - 30 * s } })
       .setOrigin(0.5, 0);
     const desc = this.add
-      .text(0, name.y + name.height + 8 * s, def.desc, { fontFamily: FONT_UI, fontSize: `${16 * s}px`, color: '#4a2f1a', align: 'center', wordWrap: { width: cw - 36 * s } })
+      .text(0, name.y + name.height + 8 * s, tx(def.desc), { fontFamily: FONT_UI, fontSize: `${16 * s}px`, color: '#4a2f1a', align: 'center', wordWrap: { width: cw - 36 * s } })
       .setOrigin(0.5, 0);
     card.add([rarText, iconBg, icon, name, desc]);
     c.add(card);
 
     const bw = cw - 70 * s, bh = 48 * s;
-    c.add(this.makeButton('Взять', cx, cy + ch / 2 - bh - 18 * s, bw, bh, 0x8b1e1e, () => this.takeChest()));
+    c.add(this.makeButton(t('chest.take'), cx, cy + ch / 2 - bh - 18 * s, bw, bh, 0x8b1e1e, () => this.takeChest()));
+    if (!canReroll && Platform.adsOff && !this.chestRerolled) c.add(this.noteText(cx, cy + ch / 2 + 26 * s, this.adsNotice(), W - 40 * s));
+    if (canReroll) {
+      c.add(this.makeButton(t('chest.reroll'), cx, cy + ch / 2 + 14 * s, Math.min(W - 40 * s, 300 * s), 44 * s, 0x5a4636, () => void this.rerollChest()));
+    }
 
     if (animate) {
       card.setScale(0.4).setAlpha(0);
@@ -649,13 +772,33 @@ export class UIScene extends Phaser.Scene {
     this.closeModal();
     this.modalKind = 'gameover';
     this.modalStats = stats;
-    const W = this.scale.width, H = this.scale.height, s = this.s;
+    const W = this.scale.width, H = this.scale.height;
+    let s = this.s;
     const c = this.add.container(0, 0);
     this.modal = c;
     c.add(this.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0).setInteractive());
 
-    const pw = Math.min(W - 28 * s, 400 * s);
-    const ph = (stats.canRevive ? 392 : 330) * s;
+    const buttons: { label: string; color: number; fn: () => void }[] = [];
+    const ads = !Platform.adsOff;
+    if (stats.canRevive && ads) buttons.push({ label: t('over.revive'), color: 0x1f7a5a, fn: () => void this.revive() });
+    if (stats.canRevive) {
+      const cost = this.g.reviveCost;
+      const enough = Save.get().gold >= cost;
+      buttons.push({ label: t('over.reviveGold', { n: cost }), color: enough ? 0x1f7a5a : 0x55554c, fn: () => this.reviveForGold() });
+    }
+    if (ads && !this.g.goldDoubled && stats.gold > 0) buttons.push({ label: t('over.double', { x1: stats.gold, x2: stats.gold * 2 }), color: 0xb8861e, fn: () => void this.doubleGold() });
+    buttons.push({ label: t('over.again'), color: 0x8b1e1e, fn: () => this.restart() });
+    buttons.push({ label: t('over.menu'), color: 0x5a4636, fn: () => void this.exitToMenu() });
+    const landscape = W > H * 1.15;
+    const cols = landscape && buttons.length > 2 ? 2 : 1;
+    const rows = Math.ceil(buttons.length / cols);
+    const notice = !ads && (stats.canRevive || (!this.g.goldDoubled && stats.gold > 0));
+    // невысокий экран (окно 800×450, телефон боком): окно с заголовком ужимается, чтобы влезть целиком
+    const tall = 172 + rows * 50 + (rows - 1) * 12 + 22 + (notice ? 30 : 0) + 128;
+    s = Math.min(s, (H - 8 * this.s) / tall);
+    const bh = 50 * s, bgap = 12 * s;
+    const pw = Math.min(W - 28 * s, (cols === 2 ? 600 : 400) * s);
+    const ph = 172 * s + rows * bh + (rows - 1) * bgap + 22 * s + (notice ? 30 * s : 0);
     const px = (W - pw) / 2, py = H / 2 - ph / 2 + 10 * s;
     const panel = this.add.graphics();
     panel.fillStyle(COLORS.parchment, 1).fillRoundedRect(px, py, pw, ph, 16 * s);
@@ -664,10 +807,10 @@ export class UIScene extends Phaser.Scene {
 
     c.add(
       this.add
-        .text(W / 2, py - 14 * s, 'Богатырь пал…', {
+        .text(W / 2, py - 14 * s, stats.won ? t('over.win') : t('over.lose'), {
           fontFamily: FONT_TITLE,
-          fontSize: `${36 * s}px`,
-          color: '#ff6b5a',
+          fontSize: `${(stats.won ? 44 : 36) * s}px`,
+          color: stats.won ? COLORS.goldText : '#ff6b5a',
           stroke: '#2a0805',
           strokeThickness: 7 * s,
         })
@@ -675,10 +818,10 @@ export class UIScene extends Phaser.Scene {
     );
 
     const lines = [
-      `Продержался: ${fmtTime(stats.time)}`,
-      `Сражено нечисти: ${stats.kills}`,
-      `Уровень: ${stats.level}`,
-      `Злато: +${stats.gold}  (всего ${stats.totalGold})`,
+      stats.won ? t('over.winTime', { t: fmtTime(stats.time) }) : t('over.time', { t: fmtTime(stats.time) }),
+      t('over.kills', { n: stats.kills }),
+      t('over.level', { n: stats.level }),
+      this.g.goldDoubled ? t('over.goldX2', { n: stats.gold, total: stats.totalGold }) : t('over.gold', { n: stats.gold, total: stats.totalGold }),
     ];
     c.add(
       this.add
@@ -693,14 +836,16 @@ export class UIScene extends Phaser.Scene {
         .setOrigin(0.5, 0),
     );
 
-    const bw = pw - 48 * s, bh = 52 * s;
-    let by = py + ph - 24 * s - bh;
-    c.add(this.makeButton('В главное меню', W / 2, by, bw, bh * 0.85, 0x5a4636, () => void this.exitToMenu()));
-    by -= bh + 12 * s;
-    c.add(this.makeButton('Снова в бой', W / 2, by, bw, bh, 0x8b1e1e, () => this.restart()));
-    if (stats.canRevive) {
-      by -= bh + 12 * s;
-      c.add(this.makeButton('Живая вода: воскреснуть (реклама)', W / 2, by, bw, bh, 0x1f7a5a, () => this.revive()));
+    const bw = (pw - 48 * s - (cols - 1) * bgap) / cols;
+    const by0 = py + 172 * s;
+    buttons.forEach((b, i) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      const cx = px + 24 * s + col * (bw + bgap) + bw / 2;
+      c.add(this.makeButton(b.label, cx, by0 + row * (bh + bgap), bw, bh, b.color, b.fn));
+    });
+    if (notice) {
+      const note = this.noteText(W / 2, py + ph - 26 * s, this.adsNotice(), pw - 30 * s);
+      c.add(note.setColor('#7a5a3a').setStroke('#000000', 0));
     }
 
     if (animate) {
@@ -730,6 +875,8 @@ export class UIScene extends Phaser.Scene {
         strokeThickness: 3 * s,
       })
       .setOrigin(0.5);
+    // длинная подпись в узкой кнопке ужимается по ширине
+    if (t.width > w - 14 * s) t.setScale((w - 14 * s) / t.width);
     const zone = this.add.zone(0, 0, w, h).setOrigin(0).setInteractive({ useHandCursor: true });
     zone.on('pointerover', () => draw(true));
     zone.on('pointerout', () => draw(false));
@@ -742,28 +889,78 @@ export class UIScene extends Phaser.Scene {
     return b;
   }
 
-  private pauseForAd = () => {
-    this.sound.mute = true;
-  };
+  /**
+   * Реклама за награду: true — досмотрена (награду даём только тогда).
+   * Рекламы нет — короткая надпись; недоступна совсем — окно перерисуется без рекламных кнопок.
+   */
+  private async watchAd(): Promise<boolean> {
+    this.busy = true;
+    const r = await Platform.rewarded();
+    this.busy = false;
+    if (r === 'unavailable') this.note(t('ad.later'));
+    if (r === 'blocked') {
+      this.note(this.adsNotice());
+      this.refreshModal();
+    }
+    return r === 'ok';
+  }
 
-  private resumeAfterAd = () => {
-    this.sound.mute = false;
-  };
+  /** «Другой предмет» в сундуке за рекламу. */
+  private async rerollChest(): Promise<void> {
+    if (this.busy || this.modalKind !== 'chest' || !this.modalItem) return;
+    if (!(await this.watchAd()) || this.modalKind !== 'chest' || !this.modalItem) return;
+    const id = this.g.rerollChestItem(this.modalItem);
+    if (!id) return;
+    this.chestRerolled = true;
+    this.showChest(id, true);
+  }
+
+  /** «Другие умения» на экране уровня за рекламу. */
+  private async rerollSkills(): Promise<void> {
+    if (this.busy || this.modalKind !== 'levelup' || this.g.rerollCd > 0) return;
+    if (!(await this.watchAd()) || this.modalKind !== 'levelup') return;
+    this.showLevelUp(this.g.rerollChoices(), true);
+  }
+
+  /** ×2 злата за забег на экране поражения/победы. */
+  private async doubleGold(): Promise<void> {
+    if (this.busy || this.modalKind !== 'gameover' || !this.modalStats || this.g.goldDoubled) return;
+    if (!(await this.watchAd()) || !this.modalStats) return;
+    const r = this.g.doubleGold();
+    this.g.sfx('levelup', 0.5);
+    this.showGameOver({ ...this.modalStats, gold: r.gold, totalGold: r.totalGold }, false);
+  }
+
+  /** «Буйство» за рекламу (с экрана нового уровня): награда — только если реклама досмотрена. */
+  private async offerRage(): Promise<void> {
+    if (this.busy || !this.g.rageReady) return;
+    if (!(await this.watchAd())) return;
+    this.g.startRage();
+    // окно выбора остаётся — перерисуем без кнопки
+    if (this.modalKind === 'levelup') this.showLevelUp(this.modalChoices, false);
+  }
 
   private async revive(): Promise<void> {
-    this.busy = true;
-    const ok = await Yandex.showRewardedAd(this.pauseForAd, this.resumeAfterAd);
-    this.busy = false;
-    if (!ok) return;
+    if (this.busy) return;
+    if (!(await this.watchAd()) || this.modalKind !== 'gameover') return;
     this.closeModal();
     this.modalStats = null;
     this.g.revive();
   }
 
-  private async restart(): Promise<void> {
-    this.busy = true;
-    await Yandex.showFullscreenAd(this.pauseForAd, this.resumeAfterAd);
-    this.busy = false;
+  /** Воскрешение за злато — без рекламы. */
+  private reviveForGold(): void {
+    if (this.modalKind !== 'gameover') return;
+    const cost = this.g.reviveCost;
+    if (!this.g.reviveForGold()) {
+      this.note(t('over.noGold', { n: cost, have: Save.get().gold }));
+      return;
+    }
+    this.closeModal();
+    this.modalStats = null;
+  }
+
+  private restart(): void {
     this.closeModal();
     this.modalStats = null;
     this.g.scene.restart();

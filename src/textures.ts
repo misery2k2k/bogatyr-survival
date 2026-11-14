@@ -525,23 +525,43 @@ function makeItems(scene: Phaser.Scene) {
   canvasTex(scene, 'spear', 150, 24, (c, _w, h) => drawSpear(c, 0, h / 2, 150));
 
   // Пирожок (лечит)
-  canvasTex(scene, 'pie', 36, 26, (c, w, h) => {
-    softShadow(c, w / 2, h - 4, 15, 3);
+  // Пирожок: румяная «лодочка» с защипом поверху и паром — чтобы читалось как еда, а не овал
+  canvasTex(scene, 'pie', 44, 38, (c, w, h) => {
+    const cx = w / 2, by = h - 5;
+    softShadow(c, cx, by + 1, 18, 3.5);
+    // тело пирожка
+    c.beginPath();
+    c.moveTo(cx - 19, by - 2);
+    c.quadraticCurveTo(cx - 19, by - 17, cx, by - 18);
+    c.quadraticCurveTo(cx + 19, by - 17, cx + 19, by - 2);
+    c.quadraticCurveTo(cx, by + 3, cx - 19, by - 2);
+    c.closePath();
+    c.fillStyle = '#d4842c';
+    c.fill();
     c.strokeStyle = INK;
     c.lineWidth = 1.8;
-    c.beginPath();
-    c.ellipse(w / 2, h / 2 + 1, 15, 9, 0, 0, Math.PI * 2);
-    c.fillStyle = '#b8681f';
-    c.fill();
     c.stroke();
-    ellipse(c, w / 2, h / 2 - 1, 13, 7, '#e59a3a');
-    ellipse(c, w / 2 - 3, h / 2 - 4, 6, 2.5, '#f7c675');
-    c.strokeStyle = '#9b5517';
-    c.lineWidth = 1.5;
-    for (const dx of [-5, 0, 5]) {
+    // румяный бок и блик
+    ellipse(c, cx - 2, by - 9, 14, 6, '#e9a24a');
+    ellipse(c, cx - 7, by - 12, 6, 2.4, '#fbd58a');
+    // защип: зубчики по гребню
+    c.strokeStyle = '#8a4810';
+    c.lineWidth = 1.6;
+    c.beginPath();
+    for (let i = 0; i <= 8; i++) {
+      const x = cx - 13 + i * 3.25;
+      const y = by - 16.5 + Math.abs(i - 4) * 0.55 + (i % 2 ? 2 : -0.5);
+      if (i === 0) c.moveTo(x, y);
+      else c.lineTo(x, y);
+    }
+    c.stroke();
+    // пар
+    c.strokeStyle = 'rgba(255,255,255,0.85)';
+    c.lineWidth = 2;
+    for (const [sx, s] of [[cx - 5, 1], [cx + 5, -1]] as const) {
       c.beginPath();
-      c.moveTo(w / 2 + dx - 2, h / 2 - 1);
-      c.lineTo(w / 2 + dx + 2, h / 2 + 2);
+      c.moveTo(sx, by - 20);
+      c.bezierCurveTo(sx + 4 * s, by - 24, sx - 4 * s, by - 28, sx + 1 * s, by - 33);
       c.stroke();
     }
   });

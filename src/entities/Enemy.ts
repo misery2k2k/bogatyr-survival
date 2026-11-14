@@ -1,7 +1,9 @@
+import type { Text } from '../i18n';
+
 /** Общие свойства любой нечисти, по которой бьёт оружие (зомби и Змей Горыныч). */
 export interface EnemyKind {
   key: string;
-  name: string;
+  name: Text;
   /** Опыт за убийство (начисляется сразу). */
   xp: number;
   scale: number;

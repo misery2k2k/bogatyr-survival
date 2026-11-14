@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BOSSES, BOSS_TOAST, type Ability, type BossDef, type BossKind } from '../bosses';
 import { PLAYER_BASE, ZOMBIES } from '../config';
+import { t, tx } from '../i18n';
 import { SpriteBoss, Yascher, type BossActor, type Cast } from '../entities/SpriteBoss';
 import type { GameScene } from '../scenes/GameScene';
 
@@ -126,7 +127,7 @@ export class Bosses {
       if (ph && b.hp / b.maxHp <= ph.at) {
         b.phaseIdx++;
         const pt = g.spawner.ringPoint();
-        g.bus.emit('toast', ph.toast);
+        g.bus.emit('toast', tx(ph.toast));
         g.spawnBoss(ph.kind, pt.x, pt.y, b.hpMul * 0.35);
       }
 
@@ -252,7 +253,7 @@ export class Bosses {
           const a = a0 + (k / n) * Math.PI * 2;
           c.pts.push({ x: cx + Math.cos(a) * (ab.ring ?? 150), y: cy + Math.sin(a) * (ab.ring ?? 150) * 0.8 });
         }
-        if (ab.toast) g.bus.emit('toast', ab.toast);
+        if (ab.toast) g.bus.emit('toast', tx(ab.toast));
         b.act(anim, c.T + 0.3, ab.rider);
         if (ab.buff) g.sfx('roar', 0.6, 0.75);
         break;
@@ -289,7 +290,7 @@ export class Bosses {
       case 'beam':
         if (ab.lids) {
           // «Поднимите мне веки!» — чертенята бегут к Вию
-          g.bus.emit('toast', 'Поднимите мне веки!');
+          g.bus.emit('toast', t('toast.lids'));
           const imp = ZOMBIES.chortik;
           if (imp && g.anims.exists(`${imp.anim}-walk`)) {
             for (let k = 0; k < 2; k++) g.spawnZombie(imp, b.x + (k ? 80 : -80), b.y + 30, g.spawner.hpMul, g.spawner.dmgMul);
@@ -350,7 +351,7 @@ export class Bosses {
             this.hard(b, ab.dmg ?? 20, 0.2);
             p.push(b.x, b.y, ab.knock ?? 500);
             p.rootT = Math.max(p.rootT, ab.stun ?? 0.8);
-            g.fx.number(p.x, p.y - p.tall - 20, 'Оглушён!', '#bfe8ff', 16);
+            g.fx.number(p.x, p.y - p.tall - 20, t('fx.stunned'), '#bfe8ff', 16);
           }
         } else {
           g.fx.slash(b, -b.figureH * 0.4, c.ang, r, arc, 0xff8a6a);
@@ -473,7 +474,7 @@ export class Bosses {
         if (caught) {
           this.hard(b, ab.dmg ?? 18, 0.15);
           p.rootT = Math.max(p.rootT, ab.root ?? 1);
-          g.fx.number(p.x, p.y - p.tall - 20, ab.label ?? 'Опутан!', '#d8ffd0', 16);
+          g.fx.number(p.x, p.y - p.tall - 20, ab.label ? tx(ab.label) : t('fx.rooted'), '#d8ffd0', 16);
         }
         done(0.3);
         return false;
@@ -641,8 +642,8 @@ export class Bosses {
         g.sfx('soul0', 0.5, 0.45);
         if (playing && this.inCircle(c.x, c.y, r)) {
           p.noHealT = Math.max(p.noHealT, ab.dur ?? 6);
-          g.fx.number(p.x, p.y - p.tall - 20, 'Печать Нави!', '#d8a8ff', 17);
-          g.bus.emit('toast', 'Печать Нави: лечение не действует!');
+          g.fx.number(p.x, p.y - p.tall - 20, t('fx.curse'), '#d8a8ff', 17);
+          g.bus.emit('toast', t('toast.curse'));
         }
         done(0.3);
         return false;
@@ -701,7 +702,7 @@ export class Bosses {
     b.reviveT = 2.8;
     b.invulnT = 3;
     b.fall();
-    this.g.bus.emit('toast', b.def.deathToast ?? `${b.def.name} ещё встанет!`);
+    this.g.bus.emit('toast', b.def.deathToast ? tx(b.def.deathToast) : t('toast.willRise', { name: tx(b.def.name) }));
     this.g.sfx('roar', 0.5, 0.6);
     return true;
   }
@@ -714,12 +715,12 @@ export class Bosses {
     this.g.fx.critBurst(b.x, b.y - b.figureH * 0.5, 1.5);
     this.g.cameras.main.shake(260, 0.006);
     this.g.sfx('roar', 0.7, 0.7);
-    this.g.bus.emit('toast', b.def.riseToast ?? `${b.def.name} встаёт!`);
+    this.g.bus.emit('toast', b.def.riseToast ? tx(b.def.riseToast) : t('toast.rises', { name: tx(b.def.name) }));
   }
 
   /** Имя и объявление босса для Spawner. */
   static toast(kind: BossKind): string {
-    return BOSS_TOAST[kind];
+    return tx(BOSS_TOAST[kind]);
   }
 
   static def(kind: BossKind): BossDef | undefined {

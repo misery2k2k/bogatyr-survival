@@ -1,12 +1,10 @@
 import Phaser from 'phaser';
 import { COLORS, FONT_TITLE, FONT_UI } from '../config';
 import { getSettings, updateSettings } from '../settings';
+import { LANGS, getLang, setLang, t, type Lang } from '../i18n';
 
-/** Авторы готовых ассетов: CC BY и OGA-BY требуют указывать имя — подробности в ASSETS.md. */
-const CREDITS =
-  'Нечисть: GameArt2D, sonild, Segel (CC0), CraftPix.net 2D Game Assets (OGA-BY 3.0). ' +
-  'Земли: Drummyfish, rubberduck, pzUH, Tio Aimar, Bevouliin (CC0), Dakal и Althaj (CC BY 3.0), LudicArts — Franco Giachetti (CC BY 4.0). ' +
-  'Звуки: Kenney, qubodup, rubberduck (CC0).';
+/** Подписи языков — каждая на своём языке. */
+const LANG_NAMES: Record<Lang, string> = { ru: 'Русский', en: 'English' };
 
 /**
  * Окно настроек: громкость звуков, выход в меню (из забега) и титры.
@@ -23,13 +21,15 @@ export class SettingsPanel {
     private readonly onClose: () => void,
     /** Есть — в окне кнопка «В главное меню» (во время забега). */
     onExit?: () => void,
+    /** Язык сменили — хозяин окна перерисовывает экран (и само окно). */
+    onLang?: () => void,
   ) {
     const W = scene.scale.width, H = scene.scale.height;
     const c = scene.add.container(0, 0).setDepth(20000);
     this.root = c;
     c.add(scene.add.rectangle(0, 0, W, H, 0x000000, 0.66).setOrigin(0).setInteractive());
 
-    const pw = Math.min(W - 28 * s, 440 * s), ph = (onExit ? 322 : 300) * s;
+    const pw = Math.min(W - 28 * s, 440 * s), ph = (onExit ? 322 : 300) * s + 52 * s;
     const px = (W - pw) / 2, py = (H - ph) / 2;
     const panel = scene.add.graphics();
     panel.fillStyle(0x000000, 0.35).fillRoundedRect(px + 3 * s, py + 5 * s, pw, ph, 16 * s);
@@ -39,7 +39,7 @@ export class SettingsPanel {
     c.add(panel);
     c.add(
       scene.add
-        .text(W / 2, py - 12 * s, 'Настройки', {
+        .text(W / 2, py - 12 * s, t('set.title'), {
           fontFamily: FONT_TITLE,
           fontSize: `${34 * s}px`,
           color: COLORS.goldText,
@@ -51,10 +51,30 @@ export class SettingsPanel {
 
     const lx = px + 26 * s, sw = pw - 52 * s;
     let y = py + 30 * s;
-    this.slider('Звуки', lx, y, sw, () => getSettings().sfx, (v) => updateSettings({ sfx: v }), () => {
+    this.slider(t('set.sound'), lx, y, sw, () => getSettings().sfx, (v) => updateSettings({ sfx: v }), () => {
       if (scene.cache.audio.exists('click')) scene.sound.play('click', { volume: 0.6 * getSettings().sfx });
     });
-    y += 88 * s;
+    y += 74 * s;
+
+    // Язык: две кнопки, выбранная подсвечена
+    c.add(scene.add.text(lx, y + 14 * s, t('set.lang'), this.labelStyle()).setOrigin(0, 0.5));
+    const lw = 108 * s, lh = 32 * s;
+    LANGS.forEach((l, i) => {
+      const x = px + pw - 26 * s - (LANGS.length - i) * (lw + 8 * s) + 8 * s;
+      const on = getLang() === l;
+      const g = scene.add.graphics();
+      g.fillStyle(on ? 0x8b1e1e : 0xe6d3a8, 1).fillRoundedRect(x, y - 2 * s, lw, lh, 9 * s);
+      g.lineStyle(2 * s, on ? COLORS.gold : 0x8b6a4a, 1).strokeRoundedRect(x, y - 2 * s, lw, lh, 9 * s);
+      const tl = scene.add.text(x + lw / 2, y + lh / 2 - 2 * s, LANG_NAMES[l], { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${15 * s}px`, color: on ? '#ffffff' : COLORS.ink }).setOrigin(0.5);
+      const z = scene.add.zone(x, y - 2 * s, lw, lh).setOrigin(0).setInteractive({ useHandCursor: true });
+      z.on('pointerup', () => {
+        if (getLang() === l) return;
+        setLang(l);
+        onLang?.();
+      });
+      c.add([g, tl, z]);
+    });
+    y += 66 * s;
 
     // Кнопка «Продолжить»
     const bw = pw - 80 * s, bh = 48 * s, bx = W / 2 - bw / 2;
@@ -66,7 +86,7 @@ export class SettingsPanel {
     };
     drawBtn(false);
     const btnText = scene.add
-      .text(W / 2, y + bh / 2, 'Продолжить', { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${20 * s}px`, color: '#ffffff', stroke: '#1a0a04', strokeThickness: 3 * s })
+      .text(W / 2, y + bh / 2, t('set.continue'), { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${20 * s}px`, color: '#ffffff', stroke: '#1a0a04', strokeThickness: 3 * s })
       .setOrigin(0.5);
     const zone = scene.add.zone(bx, y, bw, bh).setOrigin(0).setInteractive({ useHandCursor: true });
     zone.on('pointerover', () => drawBtn(true));
@@ -86,7 +106,7 @@ export class SettingsPanel {
       };
       drawExit(false);
       const etext = scene.add
-        .text(W / 2, ey + bh / 2, 'В главное меню', { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${18 * s}px`, color: '#ffffff', stroke: '#1a0a04', strokeThickness: 3 * s })
+        .text(W / 2, ey + bh / 2, t('set.menu'), { fontFamily: FONT_UI, fontStyle: 'bold', fontSize: `${18 * s}px`, color: '#ffffff', stroke: '#1a0a04', strokeThickness: 3 * s })
         .setOrigin(0.5);
       const ezone = scene.add.zone(bx, ey, bw, bh).setOrigin(0).setInteractive({ useHandCursor: true });
       ezone.on('pointerover', () => drawExit(true));
@@ -94,7 +114,7 @@ export class SettingsPanel {
       ezone.on('pointerup', () => {
         if (!armed) {
           armed = true;
-          etext.setText('Выйти? Нажми ещё раз');
+          etext.setText(t('set.menuConfirm'));
           drawExit(true);
           return;
         }
@@ -105,7 +125,8 @@ export class SettingsPanel {
 
     c.add(
       scene.add
-        .text(W / 2, py + ph - 14 * s, CREDITS, {
+        // авторы готовых ассетов: CC BY и OGA-BY требуют указывать имя — подробности в ASSETS.md
+        .text(W / 2, py + ph - 14 * s, t('set.credits'), {
           fontFamily: FONT_UI,
           fontSize: `${10.5 * s}px`,
           lineSpacing: 1 * s,

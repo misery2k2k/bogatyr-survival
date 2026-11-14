@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
+import { T } from '../i18n';
 import type { Enemy, EnemyKind } from './Enemy';
 import { HERO_UNITS_TALL, HeroRig, TUGARIN_SKIN } from './HeroRig';
 
 export const TUGARIN = {
   key: 'tugarin',
-  name: 'Тугарин Змеевич',
+  name: T('Тугарин Змеевич', 'Tugarin Zmeyevich'),
   hp: 1300,
   speed: 64,
   /** Урон вплотную, сабельным взмахом и рывком (умножается на силу нечисти). */
@@ -26,7 +27,7 @@ export const TUGARIN = {
   dashCd: 5.5,
   dashAim: 1.05,
   dashSpeed: 660,
-} satisfies EnemyKind & Record<string, number | string>;
+} satisfies EnemyKind & Record<string, unknown>;
 
 export type TugarinState = 'walk' | 'slashAim' | 'dashAim' | 'dash' | 'recover';
 

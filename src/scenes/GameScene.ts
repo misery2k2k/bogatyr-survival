@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ABILITIES, ABILITY_BY_ID } from '../abilities/defs';
 import type { AbilityId, Weapon } from '../abilities/types';
-import { COLORS, PLAYER_BASE, TEX_RES, VIEW_AREA_SQRT, xpForLevel, type ZombieType } from '../config';
+import { COLORS, FONT_UI, PLAYER_BASE, TEX_RES, VIEW_AREA_SQRT, xpForLevel, type ZombieType } from '../config';
 import { Pickups } from '../entities/Pickups';
 import { ARMOR_CAP, Player, baseStats } from '../entities/Player';
 import { DRAGON, Dragon } from '../entities/Dragon';
@@ -19,17 +19,20 @@ import { Fx } from '../systems/Fx';
 import { Projectiles } from '../systems/Projectiles';
 import { SpatialGrid } from '../systems/SpatialGrid';
 import { Spawner } from '../systems/Spawner';
-import { BIOMES, type BiomeDef, type BossKind } from '../biomes';
+import { BIOMES, START_ITEMS, START_LEVEL, type BiomeDef, type BossKind } from '../biomes';
 import { Bosses } from '../systems/Bosses';
 import type { BossActor } from '../entities/SpriteBoss';
 import { LazyAssets } from '../mobs';
-import { Yandex } from '../yandex';
+import { Platform } from '../platform';
+import { t, tx } from '../i18n';
 
 export type { SfxKey };
 
 const SFX_THROTTLE_MS: Record<string, number> = { hit: 55, soul: 60, hurt: 220, swing: 60, crit: 80, squish: 80, thunder: 90, fire: 150, block: 120, dstomp: 300, flail: 200 };
 
 export interface RunStats {
+  /** Одолел Чернобога — победа. */
+  won?: boolean;
   time: number;
   kills: number;
   level: number;
@@ -40,6 +43,18 @@ export interface RunStats {
 }
 
 export type DamageKind = 'hit' | 'helix' | 'splash';
+
+/** «Буйство» за рекламу: сколько длится и как часто можно (с). */
+export const RAGE_TIME = 20;
+const RAGE_CD = 150;
+/** «Другие умения» за рекламу — не чаще раза в столько секунд. */
+const REROLL_CD = 60;
+/** После воскрешения за рекламу — столько секунд неуязвимости. */
+const REVIVE_GOD = 5;
+
+/** Прицел стрелка: всего (с) и сколько из них прицел уже замер перед выстрелом. */
+const ARCHER_AIM = 0.54;
+const ARCHER_LOCK = 0.04;
 
 /** Сундук на земле. */
 export interface Chest {
@@ -125,6 +140,22 @@ export class GameScene extends Phaser.Scene {
   private chainCd = 0;
   private feastT = 0;
   private bellT = 0;
+  /** Подсказки новичку про пирожки (одна при первом пирожке, одна при малом здоровье). */
+  private pieHintShown = false;
+  /** Старт с поздней главы: сколько умений ещё выбрать в подготовке (и сколько было всего). */
+  prepLeft = 0;
+  prepTotal = 0;
+  /** «Буйство» (за рекламу): сколько ещё длится и когда можно снова. */
+  rageT = 0;
+  rageCd = 0;
+  /** «Другие умения» за рекламу: когда можно снова. */
+  rerollCd = 0;
+  /** Злато за этот забег уже удвоено рекламой. */
+  goldDoubled = false;
+  /** Редкость последнего открытого сундука (для «Другой предмет»). */
+  private chestRarity: Rarity = 'common';
+  private rageFxT = 0;
+  private lowHpTipShown = false;
 
   constructor() {
     super('Game');
@@ -162,6 +193,11 @@ export class GameScene extends Phaser.Scene {
     this.bellT = 6;
     this.grid = new SpatialGrid<Zombie>(64);
     this.bus = new Phaser.Events.EventEmitter();
+    this.pieHintShown = this.lowHpTipShown = false;
+    this.prepLeft = this.prepTotal = 0;
+    this.rageT = this.rageCd = this.rageFxT = 0;
+    this.rerollCd = 0;
+    this.goldDoubled = false;
 
     this.groundScale = 1 / TEX_RES;
     this.ground = this.add.tileSprite(0, 0, 64, 64, 'ground').setOrigin(0).setScale(this.groundScale).setDepth(-10000);
@@ -181,8 +217,13 @@ export class GameScene extends Phaser.Scene {
     this.spawner = new Spawner(this);
     this.bosses = new Bosses(this);
     this.events.once('shutdown', () => this.bosses.clear());
-    // ассеты первой главы и следующей — фоном, пока идёт бой
-    LazyAssets.ensure(this, BIOMES[0].assets, () => LazyAssets.ensure(this, BIOMES[1].assets));
+    // глава старта: выбранная в меню, но не дальше той, до которой дошёл
+    const save = Save.get();
+    const startCh = Phaser.Math.Clamp(save.startChapter ?? 0, 0, Math.min(save.maxChapter ?? 0, BIOMES.length - 1));
+    if (startCh > 0) this.spawner.startAt(startCh);
+    // ассеты этой главы и следующей — фоном, пока идёт бой
+    const nextCh = Math.min(startCh + 1, BIOMES.length - 1);
+    LazyAssets.ensure(this, BIOMES[startCh].assets, () => LazyAssets.ensure(this, BIOMES[nextCh].assets));
 
     const cam = this.cameras.main;
     cam.setBackgroundColor('#3f6a2a');
@@ -200,7 +241,21 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.addAbility('sword');
+    // благословение: предмет выбран ещё в меню (там его и показали) — даётся первым, до предметов подготовки
+    const blessed = this.registry.get('blessed') as ItemId | null;
+    this.registry.set('blessed', null);
+    if (blessed && ITEM_BY_ID.has(blessed)) {
+      this.items.push(blessed);
+      this.recalcStats();
+      this.time.delayedCall(2600, () => this.bus.emit('toast', t('toast.blessing', { item: tx(ITEM_BY_ID.get(blessed)!.name) })));
+    }
+    if (startCh > 0) {
+      this.applyBiome(BIOMES[startCh], 0);
+      this.prepareStart(startCh);
+    }
+    if (blessed) this.player.hp = this.player.stats.maxHp;
     this.spawner.opening();
+    this.pickups.onSpawn = (pie) => this.pieHint(pie);
     this.bossKills = 0;
     this.goldAwarded = 0;
     this.freeRevives = talentLevel('revive');
@@ -209,7 +264,7 @@ export class GameScene extends Phaser.Scene {
 
     this.scene.stop('UI');
     this.scene.launch('UI');
-    Yandex.gameplayStart();
+    Platform.gameplayStart();
   }
 
   /** Видимая область мира (считаем сами: worldView обновляется только после рендера). */
@@ -270,8 +325,23 @@ export class GameScene extends Phaser.Scene {
         // золотое мерцание неуязвимости
         if (Math.floor(this.invulnT * 10) % 2 === 0) p.flash(0xffe9a0, 0.05);
       }
-      // Потолок вампиризма: не больше 2.5% здоровья в секунду (+ запас на одну секунду)
-      const lsCap = p.stats.maxHp * 0.025;
+      this.rageCd -= dt;
+      this.rerollCd -= dt;
+      if (this.rageT > 0) {
+        this.rageT -= dt;
+        this.rageFxT -= dt;
+        if (this.rageFxT <= 0) {
+          this.rageFxT = 0.25;
+          p.flash(0xff6a4a, 0.1);
+          this.fx.spark(p.x + Phaser.Math.Between(-22, 22), p.y - Phaser.Math.Between(20, 90), 0xff5a2a, 0.12);
+        }
+        if (this.rageT <= 0) {
+          this.recalcStats();
+          this.bus.emit('toast', t('toast.rageOver'));
+        }
+      }
+      // Потолок вампиризма: не больше 2.5% здоровья в секунду (в буйстве — 8%) + запас на одну секунду
+      const lsCap = p.stats.maxHp * (this.rageT > 0 ? 0.08 : 0.025);
       this.lsBudget = Math.min(lsCap, this.lsBudget + lsCap * dt);
     }
 
@@ -335,21 +405,30 @@ export class GameScene extends Phaser.Scene {
       const ai = z.ztype.ai ?? 'melee';
       const playing = this.state === 'play' && !p.dead;
       if (ai === 'archer') {
-        // Стрелок: держит дистанцию; целится (тонкая красная линия) и стреляет туда, где богатырь в момент выстрела
+        // Стрелок: держит дистанцию; целится (тонкая линия) — первые полсекунды прицел точно следует за богатырём,
+        // потом замирает (вспыхивает светлым) и через ~40 мс летит выстрел в замершую точку: кто двигается — уходит.
         const range = z.ztype.range ?? 260;
         z.aiT -= dt;
         if (z.aiState === 'aim') {
-          this.fireGfx.lineStyle(1.5, z.ztype.shotTint ?? 0xff4a2a, 0.35 + 0.4 * (1 - z.aiT / 0.55)).lineBetween(z.x, z.y - z.figureH * 0.55, p.x, p.y - p.tall * 0.4);
+          const locked = z.aiT <= ARCHER_LOCK;
+          if (!locked) {
+            z.aimX = p.x;
+            z.aimY = p.y;
+          }
+          const k = 1 - Math.max(0, z.aiT - ARCHER_LOCK) / (ARCHER_AIM - ARCHER_LOCK);
+          this.fireGfx
+            .lineStyle(locked ? 2.5 : 1.5, locked ? 0xffffff : z.ztype.shotTint ?? 0xff4a2a, locked ? 0.95 : 0.3 + 0.4 * k)
+            .lineBetween(z.x, z.y - z.figureH * 0.55, z.aimX, z.aimY - p.tall * 0.4);
           if (z.aiT <= 0) {
             if (playing) {
               const orb = z.ztype.shot === 'orb';
-              this.projectiles.fire(z.x, z.y, p.x, p.y, {
+              this.projectiles.fire(z.x, z.y, z.aimX, z.aimY, {
                 key: z.ztype.shot ?? 'arrow',
                 damage: z.damage,
                 speed: z.ztype.shotSpeed ?? 380,
                 tint: z.ztype.shotTint,
                 trail: orb ? z.ztype.shotTint : 0,
-                radius: orb ? 14 : 16,
+                radius: orb ? 11 : 9,
               });
               this.sfx(orb ? 'fire' : 'spear', 0.25, 1.4);
             }
@@ -367,7 +446,7 @@ export class GameScene extends Phaser.Scene {
           }
           if (playing && d < range * 1.4 && z.aiT <= 0) {
             z.aiState = 'aim';
-            z.aiT = 0.55;
+            z.aiT = ARCHER_AIM;
             z.play({ key: `${z.ztype.anim}-attack`, timeScale: z.ztype.animRate });
           }
         }
@@ -464,6 +543,10 @@ export class GameScene extends Phaser.Scene {
 
   private updatePickups(dt: number): void {
     const p = this.player;
+    if (!this.lowHpTipShown && p.hp < p.stats.maxHp * 0.35 && this.pickups.count > 0 && Save.get().runs < 5) {
+      this.lowHpTipShown = true;
+      this.bus.emit('toast', t('toast.lowHp'));
+    }
     this.gemStreakT -= dt;
     if (this.gemStreakT <= 0) this.gemStreak = 0;
     const healPct = this.pickups.update(dt, p.x, p.y - 10, p.stats.pickupRadius);
@@ -521,6 +604,11 @@ export class GameScene extends Phaser.Scene {
       this.fireGfx.lineStyle(2, 0xd8ffd0, 0.7).strokeEllipse(p.x, p.y - 6, 50, 22);
     }
     if (p.noHealT > 0) this.fireGfx.lineStyle(3, 0xb06aff, 0.5 + 0.3 * Math.sin(this.elapsed * 8)).strokeEllipse(p.x, p.y, 80, 40);
+    if (this.rageT > 0) {
+      const k = 0.5 + 0.5 * Math.sin(this.elapsed * 10);
+      this.fireGfx.fillStyle(0xff3a1a, 0.18 + 0.12 * k).fillEllipse(p.x, p.y, 110, 50);
+      this.fireGfx.lineStyle(3, 0xff6a2a, 0.6 + 0.3 * k).strokeEllipse(p.x, p.y, 110 + 10 * k, 50 + 5 * k);
+    }
     const w = 54, h = 6, x = p.x - w / 2, y = p.y + 9;
     g.fillStyle(0x000000, 0.65).fillRect(x - 1.5, y - 1.5, w + 3, h + 3);
     g.fillStyle(COLORS.hp, 1).fillRect(x, y, w * Phaser.Math.Clamp(p.hp / p.stats.maxHp, 0, 1), h);
@@ -596,7 +684,7 @@ export class GameScene extends Phaser.Scene {
   private tryBlock(): boolean {
     const p = this.player;
     if (p.stats.blockChance <= 0 || Math.random() >= p.stats.blockChance) return false;
-    this.fx.number(p.x - 18, p.y - p.tall - 4, 'Блок!', '#bfe3ff', 16);
+    this.fx.number(p.x - 18, p.y - p.tall - 4, t('fx.block'), '#bfe3ff', 16);
     this.fx.spark(p.x - 20 * p.facing, p.y - p.tall * 0.45, 0xcfe8ff, 0.16);
     this.sfx('block', 0.45);
     return true;
@@ -610,7 +698,7 @@ export class GameScene extends Phaser.Scene {
     const p = this.player;
     if (this.invulnT > 0) return false;
     if (p.stats.evasion > 0 && Math.random() < p.stats.evasion) {
-      this.fx.number(p.x + 16, p.y - p.tall - 4, 'Мимо!', '#d8e6ff', 15);
+      this.fx.number(p.x + 16, p.y - p.tall - 4, t('fx.miss'), '#d8e6ff', 15);
       return false;
     }
     if (this.tryBlock()) {
@@ -619,7 +707,7 @@ export class GameScene extends Phaser.Scene {
     }
     // Круговерть, сработавшая от удара, отбивает его — богатырю не нужно «танковать» как Аксу
     if (this.tryHelix()) {
-      this.fx.number(p.x - 16, p.y - p.tall - 4, 'Отбил!', '#ffe08a', 15);
+      this.fx.number(p.x - 16, p.y - p.tall - 4, t('fx.parry'), '#ffe08a', 15);
       return false;
     }
     // Камень Алатырь: удар, после которого останется меньше трети здоровья, не проходит — 3 с неуязвимости
@@ -629,7 +717,7 @@ export class GameScene extends Phaser.Scene {
       this.invulnT = 3;
       this.fx.ring(p.x, p.y, 160, 0xfff0b0, 520);
       this.fx.critBurst(p.x, p.y - p.tall * 0.5, 1.6);
-      this.fx.number(p.x, p.y - p.tall - 8, 'Алатырь!', '#fff0b0', 20, true);
+      this.fx.number(p.x, p.y - p.tall - 8, t('fx.alatyr'), '#fff0b0', 20, true);
       this.sfx('soul0', 0.5, 0.5);
       return false;
     }
@@ -657,7 +745,7 @@ export class GameScene extends Phaser.Scene {
       this.invulnT = 3;
       this.fx.ring(p.x, p.y, 160, 0xfff0b0, 520);
       this.fx.critBurst(p.x, p.y - p.tall * 0.5, 1.6);
-      this.fx.number(p.x, p.y - p.tall - 8, 'Алатырь!', '#fff0b0', 20, true);
+      this.fx.number(p.x, p.y - p.tall - 8, t('fx.alatyr'), '#fff0b0', 20, true);
       this.sfx('soul0', 0.5, 0.5);
       return false;
     }
@@ -698,7 +786,7 @@ export class GameScene extends Phaser.Scene {
       if (this.chests.length < 2) {
         const a = Math.random() * Math.PI * 2, r = Phaser.Math.FloatBetween(380, 600);
         this.spawnChest(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r * 0.85);
-        this.bus.emit('toast', this.biome.id === 'forest' ? 'Где-то в лесу сундук!' : 'Где-то рядом сундук!');
+        this.bus.emit('toast', this.biome.id === 'forest' ? t('toast.chestForest') : t('toast.chestNear'));
       }
     }
     for (const c of this.chests) {
@@ -718,6 +806,7 @@ export class GameScene extends Phaser.Scene {
     this.fx.ring(c.x, c.y, 120, 0xffd27a, 500);
     this.tweens.add({ targets: c.img, alpha: 0, delay: 500, duration: 300, onComplete: () => c.img.destroy() });
     const late = Phaser.Math.Clamp(this.elapsed / 600, 0, 1);
+    this.chestRarity = c.minRarity;
     const id = rollItem(new Set(this.items), c.minRarity, late) ?? rollItem(new Set(this.items), 'common', late);
     if (!id) {
       // всё уже собрано — в сундуке пирожки
@@ -731,7 +820,7 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(260, () => {
       this.bus.emit('chest', id);
       this.scene.pause();
-      Yandex.gameplayStop();
+      Platform.gameplayStop();
     });
   }
 
@@ -745,7 +834,7 @@ export class GameScene extends Phaser.Scene {
     this.state = 'play';
     this.scene.resume();
     this.fx.ring(p.x, p.y, 140, RARITY[ITEM_BY_ID.get(id)!.rarity].color, 520);
-    Yandex.gameplayStart();
+    Platform.gameplayStart();
   }
 
   /** Периодические эффекты предметов: скатерть-самобранка и вечевой колокол. */
@@ -898,7 +987,10 @@ export class GameScene extends Phaser.Scene {
   enterChapter(biome: BiomeDef, lap: number): void {
     const cam = this.cameras.main;
     cam.fadeOut(650, 0, 0, 0);
-    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => LazyAssets.ensure(this, biome.assets, () => this.afterFade(biome, lap)));
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      // естественная пауза между главами — тут уместна полноэкранная реклама (частоту ограничивает площадка)
+      void this.midgameAd(true).then(() => LazyAssets.ensure(this, biome.assets, () => this.afterFade(biome, lap)));
+    });
   }
 
   private afterFade(biome: BiomeDef, lap: number): void {
@@ -914,8 +1006,13 @@ export class GameScene extends Phaser.Scene {
       this.meteors = [];
       this.projectiles.clear();
       this.applyBiome(biome, lap);
-      this.bus.emit('toast', lap > 0 ? `${biome.title} — круг ${lap + 1}` : biome.title);
+      this.bus.emit('toast', tx(biome.title));
       cam.fadeIn(800, 0, 0, 0);
+    }
+    const idx = BIOMES.indexOf(biome);
+    if (idx > (Save.get().maxChapter ?? 0)) {
+      Save.update((d) => (d.maxChapter = idx));
+      Platform.happytime();
     }
     // следующая глава — фоном; атласы прошлых глав освобождаем (через паузу — вдруг кто-то ещё тает)
     const next = BIOMES[(BIOMES.indexOf(biome) + 1) % BIOMES.length];
@@ -1223,27 +1320,27 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private killTugarin(t: Tugarin): void {
+  private killTugarin(tg: Tugarin): void {
     const p = this.player;
     this.kills++;
     this.bossKills++;
-    t.tstate = 'recover';
+    tg.tstate = 'recover';
     this.addXp(TUGARIN.xp * p.stats.xpMul);
     for (let i = 0; i < 8; i++) {
-      this.time.delayedCall(i * 60, () => this.fx.soul(t.x + Phaser.Math.Between(-30, 30), t.y - Phaser.Math.Between(40, 140), p, -p.tall * 0.5, true));
+      this.time.delayedCall(i * 60, () => this.fx.soul(tg.x + Phaser.Math.Between(-30, 30), tg.y - Phaser.Math.Between(40, 140), p, -p.tall * 0.5, true));
     }
-    this.fx.splat(t.x, t.y - 4, 1.6);
-    this.fx.ring(t.x, t.y, 180, 0xff8a5a, 600);
+    this.fx.splat(tg.x, tg.y - 4, 1.6);
+    this.fx.ring(tg.x, tg.y, 180, 0xff8a5a, 600);
     if (this.chestWave !== this.spawner.bossWave) {
       this.chestWave = this.spawner.bossWave;
-      this.spawnChest(t.x, t.y + 10, 'epic');
+      this.spawnChest(tg.x, tg.y + 10, 'epic');
     }
-    this.pickups.spawn(t.x - 20, t.y + 6, 25);
+    this.pickups.spawn(tg.x - 20, tg.y + 6, 25);
     this.cameras.main.shake(260, 0.005);
     this.sfx('roar', 0.55, 1.1);
-    this.bus.emit('toast', 'Тугарин Змеевич повержен!');
-    t.die(() => {
-      this.tugarins = this.tugarins.filter((x) => x !== t);
+    this.bus.emit('toast', t('toast.defeated', { name: tx(TUGARIN.name) }));
+    tg.die(() => {
+      this.tugarins = this.tugarins.filter((x) => x !== tg);
     });
   }
 
@@ -1336,7 +1433,7 @@ export class GameScene extends Phaser.Scene {
     this.pickups.spawn(b.x - 20, b.y + 6, 25);
     this.cameras.main.shake(300, 0.006);
     this.sfx('roar', 0.6, 0.8);
-    this.bus.emit('toast', `${b.def.name} повержен!`);
+    this.bus.emit('toast', t('toast.defeated', { name: tx(b.def.name) }));
     b.die(() => {
       this.bosses.list = this.bosses.list.filter((x) => x !== b);
     });
@@ -1363,7 +1460,7 @@ export class GameScene extends Phaser.Scene {
     this.pickups.spawn(d.x - 20, d.y + 6, 25);
     this.cameras.main.shake(320, 0.006);
     this.sfx('roar', 0.6, 0.85);
-    this.bus.emit('toast', `${d.ztype.name} повержен!`);
+    this.bus.emit('toast', t('toast.defeated', { name: tx(d.ztype.name) }));
     d.die(() => {
       this.dragons = this.dragons.filter((x) => x !== d);
     });
@@ -1532,9 +1629,9 @@ export class GameScene extends Phaser.Scene {
   private openLevelUp(): void {
     this.state = 'levelup';
     this.sfx('levelup', 0.5);
-    this.bus.emit('levelup', this.rollChoices(3));
+    this.bus.emit('levelup', this.levelChoices());
     this.scene.pause();
-    Yandex.gameplayStop();
+    Platform.gameplayStop();
   }
 
   /** Вызывается из UI, когда игрок выбрал карточку. */
@@ -1547,16 +1644,25 @@ export class GameScene extends Phaser.Scene {
       this.addAbility(id);
     }
     this.pendingLevelUps--;
+    if (this.prepLeft > 0) this.prepLeft--;
     if (this.pendingLevelUps > 0) {
-      this.bus.emit('levelup', this.rollChoices(3));
+      this.bus.emit('levelup', this.levelChoices());
       return;
     }
+    this.finishLevelUps();
+  }
+
+  /** Все умения выбраны — обратно в бой. */
+  private finishLevelUps(): void {
+    const p = this.player;
+    // подготовка к поздней главе закончилась — в бой со здоровьем под завязку
+    if (this.prepTotal > 0 && this.elapsed < 1) p.hp = p.stats.maxHp;
     this.state = 'play';
     this.scene.resume();
     // Сила прибыла: золотое кольцо и искры вокруг богатыря
     this.fx.ring(p.x, p.y, 150, COLORS.gold, 520);
     this.fx.critBurst(p.x, p.y - p.tall * 0.5, 1.4);
-    Yandex.gameplayStart();
+    Platform.gameplayStart();
   }
 
   private addAbility(id: AbilityId): void {
@@ -1581,6 +1687,13 @@ export class GameScene extends Phaser.Scene {
     applyTalents(s);
     for (const [id, lvl] of this.levels) ABILITY_BY_ID.get(id)?.apply?.(s, lvl);
     for (const id of this.items) ITEM_BY_ID.get(id)?.apply?.(s);
+    if (this.rageT > 0) {
+      // Буйство: урон вдвое, удары вдвое чаще, сильный вампиризм, чуть быстрее бег
+      s.might *= 2;
+      s.haste *= 0.5;
+      s.lifesteal += 0.15;
+      s.speed *= 1.15;
+    }
     this.player.setStats(s);
   }
 
@@ -1617,7 +1730,7 @@ export class GameScene extends Phaser.Scene {
       this.fx.ring(p.x, p.y, 300, 0xffb347, 600);
       this.fx.critBurst(p.x, p.y - p.tall * 0.5, 2);
       for (const z of this.queryZombies(p.x, p.y, 300)) this.damageZombie(z, 60, p.x, p.y, 700, 'splash');
-      this.bus.emit('toast', 'Перо Жар-птицы подняло богатыря!');
+      this.bus.emit('toast', t('toast.feather'));
       this.bus.emit('abilities');
       this.sfx('levelup', 0.6);
       return;
@@ -1629,25 +1742,27 @@ export class GameScene extends Phaser.Scene {
       p.hp = Math.round(p.stats.maxHp * 0.5);
       this.fx.ring(p.x, p.y, 280, 0x9dffb0, 600);
       for (const z of this.queryZombies(p.x, p.y, 280)) this.damageZombie(z, 50, p.x, p.y, 700, 'splash');
-      this.bus.emit('toast', 'Второе дыхание!');
+      this.bus.emit('toast', t('toast.secondWind'));
       this.sfx('levelup', 0.6);
       return;
     }
     this.state = 'dead';
     this.player.die();
     this.sfx('death', 0.6);
-    Yandex.gameplayStop();
-    this.time.delayedCall(1000, () => {
-      const stats: RunStats = { time: this.elapsed, kills: this.kills, level: this.level, canRevive: this.revivesLeft > 0, ...this.awardGold() };
-      this.bus.emit('gameover', stats);
+    Platform.gameplayStop();
+    this.time.delayedCall(1000, async () => {
+      const canRevive = this.revivesLeft > 0;
+      const stats: RunStats = { time: this.elapsed, kills: this.kills, level: this.level, canRevive, ...this.awardGold() };
       this.scene.pause();
+      if (!canRevive) await this.midgameAd(false);
+      this.bus.emit('gameover', stats);
     });
   }
 
   /** Начислить злато за забег (только прибавку с прошлого начисления) и обновить рекорды. */
   private awardGold(): { gold: number; totalGold: number } {
-    const chapters = this.spawner.chapter + this.spawner.lap * BIOMES.length;
-    const earned = runGold(this.elapsed, this.kills, this.bossKills, chapters);
+    const base = runGold(this.elapsed, this.kills, this.bossKills, this.spawner.chaptersCleared) + (this.spawner.won ? 150 : 0);
+    const earned = Math.floor(base * (1 + 0.1 * talentLevel('greed')));
     const delta = Math.max(0, earned - this.goldAwarded);
     const first = this.goldAwarded === 0;
     this.goldAwarded = earned;
@@ -1663,19 +1778,186 @@ export class GameScene extends Phaser.Scene {
   /** Выход в меню посреди забега: злато за пройденное начисляется (после смерти уже начислено). */
   quitRun(): void {
     if (this.state !== 'dead') this.awardGold();
-    Yandex.gameplayStop();
+    Platform.gameplayStop();
   }
 
-  /** Воскрешение (за рекламу): полное здоровье + ударная волна вокруг. */
+  /**
+   * Старт с поздней главы: богатырь сразу получает уровень и случайные предметы (по 7 за пропущенную главу),
+   * а умения выбирает игрок — окно выбора открывается по очереди (или «Остальное — случайно»).
+   */
+  private prepareStart(k: number): void {
+    const late = Math.min(1, k / 5);
+    for (let i = 0; i < START_ITEMS[k]; i++) {
+      const id = rollItem(new Set(this.items), 'common', late);
+      if (id) this.items.push(id);
+    }
+    this.recalcStats();
+    this.level = START_LEVEL[k];
+    this.xp = 0;
+    this.xpNext = xpForLevel(this.level);
+    this.pendingLevelUps = this.prepLeft = this.prepTotal = START_LEVEL[k] - 1;
+  }
+
+  /** Три умения на выбор; в подготовке без пирожка — лечить пока некого. */
+  private levelChoices(): AbilityId[] {
+    if (this.prepLeft <= 0) return this.rollChoices(3);
+    const ch = this.rollChoices(4).filter((c) => c !== 'pie').slice(0, 3);
+    return ch.length ? ch : this.rollChoices(3);
+  }
+
+  /** Одно умение «само»: из трёх случайных берётся то, что уже прокачано сильнее (сборка цельная). */
+  private autoPick(): void {
+    const ch = this.rollChoices(3).filter((c) => c !== 'pie');
+    if (ch.length === 0) return;
+    ch.sort((a, b) => this.getLevel(b) - this.getLevel(a) || Math.random() - 0.5);
+    this.addAbility(ch[0]);
+  }
+
+  /** «Остальное — случайно»: оставшиеся умения подготовки выбираются сами, и в бой. */
+  autoRest(): void {
+    while (this.pendingLevelUps > 0) {
+      this.autoPick();
+      this.pendingLevelUps--;
+    }
+    this.prepLeft = 0;
+    this.finishLevelUps();
+  }
+
+  /** Первый пирожок новичку подписываем: «Пирожок — лечит!» и стрелка, пока его не съели. */
+  private pieHint(pie: Phaser.GameObjects.Image): void {
+    if (this.pieHintShown || (Save.get().pieTips ?? 0) >= 3) return;
+    this.pieHintShown = true;
+    Save.update((d) => (d.pieTips = (d.pieTips ?? 0) + 1));
+    this.bus.emit('toast', t('toast.pie'));
+    const label = this.add
+      .text(pie.x, pie.y - 30, t('pie.label'), {
+        fontFamily: FONT_UI,
+        fontStyle: 'bold',
+        fontSize: '15px',
+        color: '#ffe9a0',
+        stroke: '#2a1405',
+        strokeThickness: 4,
+        align: 'center',
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(99990)
+      .setResolution(Math.max(1, this.cameras.main.zoom));
+    const until = this.elapsed + 10;
+    const follow = () => {
+      if (!pie.active || !pie.visible || this.elapsed > until || !label.active) {
+        label.destroy();
+        this.events.off('postupdate', follow);
+        return;
+      }
+      label.setPosition(pie.x, pie.y - 30 + Math.sin(this.elapsed * 6) * 3);
+    };
+    this.events.on('postupdate', follow);
+    this.events.once('shutdown', () => this.events.off('postupdate', follow));
+  }
+
+  /** Можно ли сейчас предложить «Буйство» (не в подготовке, не на первой минуте, не чаще раза в 2,5 мин). */
+  get rageReady(): boolean {
+    return this.rageCd <= 0 && this.rageT <= 0 && this.elapsed > 45 && this.prepLeft <= 0;
+  }
+
+  /** «Буйство» за рекламу: 20 с урон ×2, удары вдвое чаще, вампиризм. */
+  startRage(): void {
+    this.rageT = RAGE_TIME;
+    this.rageCd = RAGE_CD;
+    this.rageFxT = 0;
+    this.recalcStats();
+    const p = this.player;
+    this.fx.ring(p.x, p.y, 200, 0xff5a2a, 500);
+    this.fx.critBurst(p.x, p.y - p.tall * 0.5, 1.5);
+    this.sfx('roar', 0.6, 1.2);
+    this.bus.emit('toast', t('toast.rage'));
+  }
+
+  /** Чернобог повержен — победа, забег окончен. */
+  victory(): void {
+    Save.update((d) => {
+      d.wins = (d.wins ?? 0) + 1;
+      d.maxChapter = BIOMES.length - 1;
+    });
+    this.invulnT = 4;
+    Platform.happytime();
+    this.bus.emit('toast', t('toast.victory'));
+    this.sfx('levelup', 0.7);
+    this.cameras.main.flash(500, 255, 230, 160);
+    this.time.delayedCall(2600, () => {
+      if (this.state === 'dead') return;
+      this.state = 'dead';
+      Platform.gameplayStop();
+      this.scene.pause();
+      const stats: RunStats = { won: true, time: this.elapsed, kills: this.kills, level: this.level, canRevive: false, ...this.awardGold() };
+      void this.midgameAd(false).then(() => this.bus.emit('gameover', stats));
+    });
+  }
+
+  /**
+   * Полноэкранная реклама на естественной паузе (между главами, после смерти, после победы).
+   * pauseGame — поставить игру на паузу на время показа и вернуть после.
+   */
+  async midgameAd(pauseGame: boolean): Promise<void> {
+    if (pauseGame) {
+      this.scene.pause();
+      Platform.gameplayStop();
+    }
+    await Platform.midgame();
+    if (pauseGame) {
+      this.scene.resume();
+      Platform.gameplayStart();
+    }
+  }
+
+  /** ×2 злата за забег (реклама на экране поражения/победы): ещё столько же, сколько уже начислено. */
+  doubleGold(): { gold: number; totalGold: number } {
+    if (!this.goldDoubled && this.goldAwarded > 0) {
+      this.goldDoubled = true;
+      Save.update((d) => (d.gold += this.goldAwarded));
+    }
+    return { gold: this.goldAwarded * (this.goldDoubled ? 2 : 1), totalGold: Save.get().gold };
+  }
+
+  /** «Другие умения» (реклама на экране уровня): новые три карточки. */
+  rerollChoices(): AbilityId[] {
+    this.rerollCd = REROLL_CD;
+    return this.levelChoices();
+  }
+
+  /** «Другой предмет» (реклама в сундуке): другой предмет той же редкости или лучше. */
+  rerollChestItem(cur: ItemId): ItemId | null {
+    const owned = new Set<ItemId>([...this.items, cur]);
+    const late = Phaser.Math.Clamp(this.elapsed / 600, 0, 1);
+    return rollItem(owned, this.chestRarity, late) ?? rollItem(owned, 'common', late);
+  }
+
+  /** Цена воскрешения за злато: дороже с каждой главой (за поздний забег и злата больше). */
+  get reviveCost(): number {
+    return 100 + 50 * Math.max(0, BIOMES.indexOf(this.biome));
+  }
+
+  /** Воскрешение за злато (вместо рекламы); false — не хватает злата. */
+  reviveForGold(): boolean {
+    const cost = this.reviveCost;
+    if (this.revivesLeft <= 0 || Save.get().gold < cost) return false;
+    Save.update((d) => (d.gold -= cost));
+    this.revive();
+    return true;
+  }
+
+  /** Воскрешение (за рекламу или злато): полное здоровье + ударная волна вокруг. */
   revive(): void {
     this.revivesLeft--;
     const p = this.player;
     p.revive();
+    this.invulnT = REVIVE_GOD;
     this.fx.ring(p.x, p.y, 320, 0xbff7ff);
+    this.fx.number(p.x, p.y - p.tall - 10, t('fx.invuln'), '#fff0b0', 20, true);
     for (const z of this.queryZombies(p.x, p.y, 320)) this.damageZombie(z, 40, p.x, p.y, 700, 'splash');
     this.state = 'play';
     this.scene.resume();
-    Yandex.gameplayStart();
+    Platform.gameplayStart();
   }
 
   getLevel(id: AbilityId): number {

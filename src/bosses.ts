@@ -1,4 +1,5 @@
 import type { EnemyKind } from './entities/Enemy';
+import { T, type Text } from './i18n';
 
 export type BossKind =
   | 'gorynych'
@@ -23,27 +24,27 @@ export type BossKind =
   | 'chernobog';
 
 /** Объявление босса при появлении. */
-export const BOSS_TOAST: Record<BossKind, string> = {
-  gorynych: 'Змей Горыныч летит!',
-  tugarin: 'Тугарин Змеевич идёт!',
-  fused: 'Тугаро-Горыныч!!!',
-  leshy: 'Леший водит по лесу!',
-  koschei: 'Кощей Бессмертный пробудился!',
-  solovey: 'Соловей-Разбойник засвистал!',
-  koschei_solovey: 'Кощей-Соловей!!!',
-  volkolak: 'Волколак вышел на охоту!',
-  koldun: 'Чёрный Колдун колдует!',
-  volkoldun: 'Волколдун!!!',
-  karachun: 'Карачун несёт стужу!',
-  likho: 'Лихо Одноглазое проснулось!',
-  lihoy: 'Лихой Карачун!!!',
-  anchutka: 'Анчутка Беспятый скачет!',
-  viy: 'Вий поднимается из земли!',
-  viy_fused: 'Анчутка держит Вию веки!!!',
-  pek: 'Пек, пекельный царь, гневается!',
-  yascher: 'Ящер выползает из огненной реки!',
-  niy: 'Ний, владыка Нави, явился!',
-  chernobog: 'Чернобог восстал!',
+export const BOSS_TOAST: Record<BossKind, Text> = {
+  gorynych: T('Змей Горыныч летит!', 'Zmey Gorynych is coming!'),
+  tugarin: T('Тугарин Змеевич идёт!', 'Tugarin Zmeyevich approaches!'),
+  fused: T('Тугаро-Горыныч!!!', 'Tugaro-Gorynych!!!'),
+  leshy: T('Леший водит по лесу!', 'The Leshy leads you astray!'),
+  koschei: T('Кощей Бессмертный пробудился!', 'Koschei the Deathless awakens!'),
+  solovey: T('Соловей-Разбойник засвистал!', 'Nightingale the Robber starts whistling!'),
+  koschei_solovey: T('Кощей-Соловей!!!', 'Koschei-Nightingale!!!'),
+  volkolak: T('Волколак вышел на охоту!', 'The Volkolak is on the hunt!'),
+  koldun: T('Чёрный Колдун колдует!', 'The Black Sorcerer casts his spells!'),
+  volkoldun: T('Волколдун!!!', 'Wolfcerer!!!'),
+  karachun: T('Карачун несёт стужу!', 'Karachun brings the deadly cold!'),
+  likho: T('Лихо Одноглазое проснулось!', 'Likho the One-Eyed wakes up!'),
+  lihoy: T('Лихой Карачун!!!', 'Wicked Karachun!!!'),
+  anchutka: T('Анчутка Беспятый скачет!', 'Anchutka the Heelless comes hopping!'),
+  viy: T('Вий поднимается из земли!', 'Viy rises from the earth!'),
+  viy_fused: T('Анчутка держит Вию веки!!!', 'Anchutka holds Viy\'s eyelids open!!!'),
+  pek: T('Пек, пекельный царь, гневается!', 'Pek, King of Hellfire, is furious!'),
+  yascher: T('Ящер выползает из огненной реки!', 'Yashcher crawls out of the river of fire!'),
+  niy: T('Ний, владыка Нави, явился!', 'Niy, Lord of Nav, has come!'),
+  chernobog: T('Чернобог восстал!', 'Chernobog has risen!'),
 };
 
 /**
@@ -77,12 +78,12 @@ export interface Ability {
   at?: 'player' | 'self';
   ring?: number;
   maxAlive?: number;
-  toast?: string;
+  toast?: Text;
   buff?: { speed: number; dur: number };
   /** Корни/лёд: на сколько опутывает и разброс кругов вокруг богатыря; подпись над ним. */
   root?: number;
   spread?: number;
-  label?: string;
+  label?: Text;
   /** Снаряды: текстура, масштаб, число волн. */
   shot?: string;
   scale?: number;
@@ -121,10 +122,10 @@ export interface BossDef extends EnemyKind {
   /** Где глаза (доли роста: вперёд, вверх) — откуда бьёт луч. */
   eye?: [number, number];
   /** На какой доле здоровья кого призывает (Чернобог). */
-  phases?: { at: number; kind: BossKind; toast: string }[];
+  phases?: { at: number; kind: BossKind; toast: Text }[];
   /** Что кричит, когда падает в первый раз и когда встаёт (Кощей). */
-  deathToast?: string;
-  riseToast?: string;
+  deathToast?: Text;
+  riseToast?: Text;
   abilities: Ability[];
 }
 
@@ -134,40 +135,40 @@ const SOUL = 0xb06aff;
 
 // Повторяющиеся приёмы
 const kosheiArmy = (cd: number, first: number, rider = false): Ability => ({
-  kind: 'summon', cd, first, type: 'skel', n: 6, at: 'player', ring: 175, wind: 1.0, maxAlive: 12, toast: 'Встаньте, кощеева рать!', anim: rider ? 'slam' : 'slam', rider,
+  kind: 'summon', cd, first, type: 'skel', n: 6, at: 'player', ring: 175, wind: 1.0, maxAlive: 12, toast: T('Встаньте, кощеева рать!', 'Rise, Koschei\'s army!'), anim: rider ? 'slam' : 'slam', rider,
 });
 const whistle = (dmg: number, cd = 7): Ability => ({ kind: 'whistle', cd, first: 3, r: 420, arc: 1.15, wind: 1.1, dmg, knock: 560, stun: 0.8, max: 400, anim: 'attack' });
 const wolfPack = (cd: number, first: number): Ability => ({
-  kind: 'summon', cd, first, type: 'wolf', n: 4, at: 'self', ring: 130, wind: 1.0, maxAlive: 8, toast: 'Волколак воет — стая идёт!', anim: 'idle', buff: { speed: 1.5, dur: 5 },
+  kind: 'summon', cd, first, type: 'wolf', n: 4, at: 'self', ring: 130, wind: 1.0, maxAlive: 8, toast: T('Волколак воет — стая идёт!', 'The Volkolak howls — the pack is coming!'), anim: 'idle', buff: { speed: 1.5, dur: 5 },
 });
 const pounce = (dmg: number, cd = 4.5): Ability => ({ kind: 'leap', cd, first: 2, wind: 0.6, r: 100, dmg, speed: 760, min: 150, max: 470, anim: 'attack' });
 const icicles = (cd: number, rider = false): Ability => ({
-  kind: 'roots', cd, first: 2.5, n: 4, r: 52, wind: 1.0, dmg: 20, root: 1.2, spread: 140, tint: ICE, label: 'Вмёрз!', rider,
+  kind: 'roots', cd, first: 2.5, n: 4, r: 52, wind: 1.0, dmg: 20, root: 1.2, spread: 140, tint: ICE, label: T('Вмёрз!', 'Frozen!'), rider,
 });
 const iceVolley = (rider = false): Ability => ({ kind: 'volley', cd: 3.6, n: 5, arc: 0.55, speed: 340, dmg: 12, shot: 'shard', tint: 0xcff0ff, wind: 0.6, rider });
 const imps = (cd: number, first: number, rider = false): Ability => ({
-  kind: 'summon', cd, first, type: 'imp', n: 5, at: 'player', ring: 200, wind: 0.9, maxAlive: 10, toast: 'Бесенята, ко мне!', rider,
+  kind: 'summon', cd, first, type: 'imp', n: 5, at: 'player', ring: 200, wind: 0.9, maxAlive: 10, toast: T('Бесенята, ко мне!', 'Imps, to me!'), rider,
 });
 const fireVolley = (cd = 5, rider = false): Ability => ({ kind: 'volley', cd, n: 3, arc: 0.35, speed: 330, dmg: 14, shot: 'orb', tint: FIRE, scale: 0.9, wind: 0.5, rider });
 
 export const BOSSES: Partial<Record<BossKind, BossDef>> = {
   // ---------------- I. Дремучий лес ----------------
   leshy: {
-    kind: 'leshy', key: 'leshy', name: 'Леший', body: 'leshy', h: 170,
+    kind: 'leshy', key: 'leshy', name: T('Леший', 'Leshy'), body: 'leshy', h: 170,
     hp: 1700, speed: 52, damage: 16, radius: 30, xp: 70, scale: 1, knockbackResist: 0.92, keep: 260,
     abilities: [
-      { kind: 'roots', cd: 6.5, first: 2.5, n: 3, r: 54, wind: 1.0, dmg: 18, root: 1.1, spread: 110, tint: 0x6ac83a, label: 'Опутан!' },
+      { kind: 'roots', cd: 6.5, first: 2.5, n: 3, r: 54, wind: 1.0, dmg: 18, root: 1.1, spread: 110, tint: 0x6ac83a, label: T('Опутан!', 'Rooted!') },
       { kind: 'volley', cd: 4.5, n: 5, arc: 0.5, speed: 300, dmg: 9, shot: 'shard', tint: 0x8ad85a, wind: 0.6 },
-      { kind: 'summon', cd: 15, first: 6, type: 'treant', n: 2, at: 'self', ring: 110, wind: 1.0, maxAlive: 4, toast: 'Леший будит деревья!' },
+      { kind: 'summon', cd: 15, first: 6, type: 'treant', n: 2, at: 'self', ring: 110, wind: 1.0, maxAlive: 4, toast: T('Леший будит деревья!', 'The Leshy awakens the trees!') },
       { kind: 'blink', cd: 9, first: 5, dist: 260 },
     ],
   },
 
   // ---------------- II. Темнолесье ----------------
   koschei: {
-    kind: 'koschei', key: 'koschei', name: 'Кощей Бессмертный', body: 'koschei', h: 200,
+    kind: 'koschei', key: 'koschei', name: T('Кощей Бессмертный', 'Koschei the Deathless'), body: 'koschei', h: 200,
     hp: 1500, speed: 52, damage: 18, radius: 30, xp: 80, scale: 1, knockbackResist: 0.95, lives: 1,
-    deathToast: 'Смерть Кощея — в игле!', riseToast: 'Кощей Бессмертный встаёт!',
+    deathToast: T('Смерть Кощея — в игле!', 'Koschei\'s death is hidden in a needle!'), riseToast: T('Кощей Бессмертный встаёт!', 'Koschei the Deathless rises!'),
     abilities: [
       { kind: 'cleave', cd: 3.2, r: 150, arc: 1.9, wind: 0.85, dmg: 26, max: 175, anim: 'attack' },
       { kind: 'slam', cd: 8, first: 4, r: 170, wind: 1.1, dmg: 30, knock: 380, anim: 'slam', tint: 0x9aff7a },
@@ -175,20 +176,20 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
     ],
   },
   solovey: {
-    kind: 'solovey', key: 'solovey', name: 'Соловей-Разбойник', body: 'solovey', h: 190,
+    kind: 'solovey', key: 'solovey', name: T('Соловей-Разбойник', 'Nightingale the Robber'), body: 'solovey', h: 190,
     hp: 1400, speed: 64, damage: 16, radius: 28, xp: 80, scale: 1, knockbackResist: 0.9,
     abilities: [
       whistle(20),
       { kind: 'cleave', cd: 2.8, r: 115, arc: 1.6, wind: 0.6, dmg: 18, max: 125 },
       { kind: 'leap', cd: 6, first: 4, wind: 0.7, r: 90, dmg: 22, speed: 700, min: 170, max: 430, anim: 'jump' },
-      { kind: 'summon', cd: 14, first: 6, type: 'razboinik', n: 4, at: 'player', ring: 220, wind: 0.8, maxAlive: 8, toast: 'Эй, разбойнички, на дело!' },
+      { kind: 'summon', cd: 14, first: 6, type: 'razboinik', n: 4, at: 'player', ring: 220, wind: 0.8, maxAlive: 8, toast: T('Эй, разбойнички, на дело!', 'Hey, lads, to work!') },
     ],
   },
   koschei_solovey: {
-    kind: 'koschei_solovey', key: 'koschei_solovey', name: 'Кощей-Соловей', body: 'solovey', h: 205,
+    kind: 'koschei_solovey', key: 'koschei_solovey', name: T('Кощей-Соловей', 'Koschei-Nightingale'), body: 'solovey', h: 205,
     rider: { id: 'koschei', h: 120, dx: -0.06, dy: 0.8 },
     hp: 2300, speed: 58, damage: 20, radius: 32, xp: 160, scale: 1, knockbackResist: 0.95, lives: 1,
-    deathToast: 'Соловей пал, а Кощей-то бессмертен!', riseToast: 'Кощей-Соловей встаёт!',
+    deathToast: T('Соловей пал, а Кощей-то бессмертен!', 'The Nightingale fell, but Koschei is deathless!'), riseToast: T('Кощей-Соловей встаёт!', 'Koschei-Nightingale rises!'),
     abilities: [
       whistle(24, 6.5),
       { kind: 'leap', cd: 6, first: 4, wind: 0.7, r: 95, dmg: 24, speed: 700, min: 170, max: 430, anim: 'jump' },
@@ -199,22 +200,22 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
 
   // ---------------- III. Выжженная земля ----------------
   volkolak: {
-    kind: 'volkolak', key: 'volkolak', name: 'Волколак', body: 'wolf', h: 120, tint: 0x9a8070,
+    kind: 'volkolak', key: 'volkolak', name: T('Волколак', 'Volkolak'), body: 'wolf', h: 120, tint: 0x9a8070,
     hp: 1500, speed: 86, damage: 18, radius: 42, xp: 80, scale: 1, knockbackResist: 0.92,
     abilities: [pounce(24), { kind: 'cleave', cd: 2.4, r: 125, arc: 1.4, wind: 0.45, dmg: 18, max: 135 }, wolfPack(14, 6)],
   },
   koldun: {
-    kind: 'koldun', key: 'koldun', name: 'Чёрный Колдун', body: 'mage', h: 180, float: true,
+    kind: 'koldun', key: 'koldun', name: T('Чёрный Колдун', 'The Black Sorcerer'), body: 'mage', h: 180, float: true,
     hp: 1300, speed: 54, damage: 14, radius: 26, xp: 80, scale: 1, knockbackResist: 0.9, keep: 300,
     abilities: [
       { kind: 'volley', cd: 3.2, n: 5, arc: 0.7, speed: 300, dmg: 12, shot: 'orb', tint: SOUL, wind: 0.7 },
       { kind: 'nova', cd: 8, first: 5, n: 14, speed: 220, dmg: 12, shot: 'orb', tint: 0x9a5aff, wind: 0.9, waves: 2 },
       { kind: 'blink', cd: 7, first: 4, dist: 280 },
-      { kind: 'summon', cd: 15, first: 8, type: 'skel', n: 4, at: 'self', ring: 110, wind: 1.0, maxAlive: 8, toast: 'Колдун поднимает мёртвых!' },
+      { kind: 'summon', cd: 15, first: 8, type: 'skel', n: 4, at: 'self', ring: 110, wind: 1.0, maxAlive: 8, toast: T('Колдун поднимает мёртвых!', 'The Sorcerer raises the dead!') },
     ],
   },
   volkoldun: {
-    kind: 'volkoldun', key: 'volkoldun', name: 'Волколдун', body: 'wolf', h: 130, tint: 0x8a7468,
+    kind: 'volkoldun', key: 'volkoldun', name: T('Волколдун', 'Wolfcerer'), body: 'wolf', h: 130, tint: 0x8a7468,
     rider: { id: 'mage', h: 120, dx: -0.1, dy: 0.62 },
     hp: 2300, speed: 80, damage: 20, radius: 44, xp: 160, scale: 1, knockbackResist: 0.95,
     abilities: [
@@ -227,18 +228,18 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
 
   // ---------------- IV. Лютые морозы ----------------
   karachun: {
-    kind: 'karachun', key: 'karachun', name: 'Карачун', body: 'karachun', h: 175,
+    kind: 'karachun', key: 'karachun', name: T('Карачун', 'Karachun'), body: 'karachun', h: 175,
     hp: 1600, speed: 56, damage: 16, radius: 28, xp: 80, scale: 1, knockbackResist: 0.92, keep: 200,
     aura: { r: 260, slow: 0.65, color: ICE },
     abilities: [
       icicles(5.5),
       iceVolley(),
       { kind: 'nova', cd: 9, first: 6, n: 16, speed: 230, dmg: 12, shot: 'shard', tint: 0xcff0ff, wind: 1.0 },
-      { kind: 'summon', cd: 14, first: 7, type: 'navka', n: 5, at: 'player', ring: 220, wind: 0.8, maxAlive: 10, toast: 'Карачун зовёт навок!' },
+      { kind: 'summon', cd: 14, first: 7, type: 'navka', n: 5, at: 'player', ring: 220, wind: 0.8, maxAlive: 10, toast: T('Карачун зовёт навок!', 'Karachun calls the navkas!') },
     ],
   },
   likho: {
-    kind: 'likho', key: 'likho', name: 'Лихо Одноглазое', body: 'likho', h: 200, eye: [0.2, 0.68],
+    kind: 'likho', key: 'likho', name: T('Лихо Одноглазое', 'Likho the One-Eyed'), body: 'likho', h: 200, eye: [0.2, 0.68],
     hp: 2000, speed: 58, damage: 22, radius: 34, xp: 90, scale: 1, knockbackResist: 0.95,
     abilities: [
       { kind: 'cleave', cd: 2.6, r: 125, arc: 1.7, wind: 0.6, dmg: 20, max: 140 },
@@ -248,7 +249,7 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
     ],
   },
   lihoy: {
-    kind: 'lihoy', key: 'lihoy', name: 'Лихой Карачун', body: 'likho', h: 215, eye: [0.2, 0.68],
+    kind: 'lihoy', key: 'lihoy', name: T('Лихой Карачун', 'Wicked Karachun'), body: 'likho', h: 215, eye: [0.2, 0.68],
     rider: { id: 'karachun', h: 115, dx: -0.04, dy: 0.86 },
     hp: 2500, speed: 56, damage: 22, radius: 36, xp: 170, scale: 1, knockbackResist: 0.95,
     aura: { r: 260, slow: 0.68, color: ICE },
@@ -263,7 +264,7 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
 
   // ---------------- V. Пекло ----------------
   anchutka: {
-    kind: 'anchutka', key: 'anchutka', name: 'Анчутка Беспятый', body: 'anchutka', h: 180,
+    kind: 'anchutka', key: 'anchutka', name: T('Анчутка Беспятый', 'Anchutka the Heelless'), body: 'anchutka', h: 180,
     hp: 1700, speed: 72, damage: 18, radius: 30, xp: 90, scale: 1, knockbackResist: 0.92,
     abilities: [
       { kind: 'leap', cd: 3.0, first: 1.5, wind: 0.55, r: 95, dmg: 22, speed: 760, min: 120, max: 480, anim: 'jump', tint: FIRE },
@@ -273,7 +274,7 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
     ],
   },
   viy: {
-    kind: 'viy', key: 'viy', name: 'Вий', body: 'viy', h: 250, eye: [0.12, 0.8],
+    kind: 'viy', key: 'viy', name: T('Вий', 'Viy'), body: 'viy', h: 250, eye: [0.12, 0.8],
     hp: 2400, speed: 34, damage: 24, radius: 40, xp: 100, scale: 1, knockbackResist: 0.97,
     abilities: [
       { kind: 'beam', cd: 10, first: 4, wind: 2.4, len: 720, width: 56, dur: 2.4, dmg: 18, turn: 0.42, tint: 0xff3a2a, lids: true },
@@ -282,7 +283,7 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
     ],
   },
   viy_fused: {
-    kind: 'viy_fused', key: 'viy_fused', name: 'Вий Неусыпный', body: 'viy', h: 260, eye: [0.12, 0.8],
+    kind: 'viy_fused', key: 'viy_fused', name: T('Вий Неусыпный', 'Viy the Sleepless'), body: 'viy', h: 260, eye: [0.12, 0.8],
     rider: { id: 'anchutka', h: 92, dx: 0.02, dy: 0.9 },
     hp: 2700, speed: 36, damage: 26, radius: 42, xp: 180, scale: 1, knockbackResist: 0.97,
     abilities: [
@@ -293,7 +294,7 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
     ],
   },
   pek: {
-    kind: 'pek', key: 'pek', name: 'Пек, пекельный царь', body: 'pek', h: 250,
+    kind: 'pek', key: 'pek', name: T('Пек, пекельный царь', 'Pek, King of Hellfire'), body: 'pek', h: 250,
     hp: 2600, speed: 46, damage: 26, radius: 40, xp: 110, scale: 1, knockbackResist: 0.97,
     abilities: [
       { kind: 'meteors', cd: 7, first: 3, n: 7, spread: 200 },
@@ -305,7 +306,7 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
 
   // ---------------- VI. Дно Пекла ----------------
   yascher: {
-    kind: 'yascher', key: 'yascher', name: 'Ящер', body: 'yascher', h: 170,
+    kind: 'yascher', key: 'yascher', name: T('Ящер', 'Yashcher'), body: 'yascher', h: 170,
     hp: 2600, speed: 62, damage: 26, radius: 60, xp: 120, scale: 1, knockbackResist: 0.98,
     abilities: [
       { kind: 'burrow', cd: 9, first: 4, dur: 2.0, r: 120, wind: 0.8, dmg: 34, speed: 280, knock: 460 },
@@ -314,22 +315,22 @@ export const BOSSES: Partial<Record<BossKind, BossDef>> = {
     ],
   },
   niy: {
-    kind: 'niy', key: 'niy', name: 'Ний, владыка Нави', body: 'niy', h: 200, float: true,
+    kind: 'niy', key: 'niy', name: T('Ний, владыка Нави', 'Niy, Lord of Nav'), body: 'niy', h: 200, float: true,
     hp: 2400, speed: 54, damage: 20, radius: 30, xp: 120, scale: 1, knockbackResist: 0.95, keep: 240,
     abilities: [
       { kind: 'nova', cd: 6, n: 12, speed: 160, dmg: 13, shot: 'orb', tint: SOUL, wind: 0.8, waves: 3, anim: 'cast' },
       { kind: 'curse', cd: 12, first: 5, r: 70, wind: 1.1, dur: 6, anim: 'cast' },
       { kind: 'cage', cd: 14, first: 9, r: 150, wind: 1.0, dur: 4.5, dmg: 20, anim: 'cast' },
-      { kind: 'summon', cd: 12, first: 7, type: 'dusha', n: 6, at: 'player', ring: 220, wind: 0.8, maxAlive: 12, toast: 'Ний выпускает души грешников!', anim: 'cast' },
+      { kind: 'summon', cd: 12, first: 7, type: 'dusha', n: 6, at: 'player', ring: 220, wind: 0.8, maxAlive: 12, toast: T('Ний выпускает души грешников!', 'Niy releases the souls of sinners!'), anim: 'cast' },
       { kind: 'blink', cd: 8, first: 6, dist: 260 },
     ],
   },
   chernobog: {
-    kind: 'chernobog', key: 'chernobog', name: 'Чернобог', body: 'chernobog', h: 290,
+    kind: 'chernobog', key: 'chernobog', name: T('Чернобог', 'Chernobog'), body: 'chernobog', h: 290,
     hp: 3200, speed: 44, damage: 30, radius: 46, xp: 200, scale: 1, knockbackResist: 0.98,
     phases: [
-      { at: 0.66, kind: 'tugarin', toast: 'Чернобог призвал Тугарина!' },
-      { at: 0.33, kind: 'fused', toast: 'Чернобог призвал Тугаро-Горыныча!' },
+      { at: 0.66, kind: 'tugarin', toast: T('Чернобог призвал Тугарина!', 'Chernobog summoned Tugarin!') },
+      { at: 0.33, kind: 'fused', toast: T('Чернобог призвал Тугаро-Горыныча!', 'Chernobog summoned Tugaro-Gorynych!') },
     ],
     abilities: [
       { kind: 'cleave', cd: 3.2, r: 190, arc: 2.0, wind: 0.9, dmg: 34, max: 210 },

@@ -6,10 +6,11 @@ import { TUGARIN } from '../entities/Tugarin';
 import { readZombieOrigins } from '../entities/Zombie';
 import { sfxLoadList } from '../sfx';
 import { makeTextures } from '../textures';
+import { Platform } from '../platform';
+import { Save } from '../save';
+import { withTimeout } from '../storage';
 
 const FX = ['slash_03', 'star_04', 'smoke_04', 'light_01', 'twirl_02', 'scorch_02', 'circle_05'];
-
-
 
 async function waitFonts(timeoutMs: number): Promise<void> {
   if (!document.fonts) return;
@@ -62,7 +63,9 @@ export class BootScene extends Phaser.Scene {
     this.packParts('tugarin', 'tsrc-', Object.keys(HERO_PARTS));
     readZombieOrigins(this);
     this.makeAnims();
-    void waitFonts(3000).then(() => this.scene.start('Menu'));
+    // меню — когда готовы шрифты и площадка (язык и сохранение должны быть известны до первой надписи)
+    const platform = Platform.init().then(() => withTimeout(Save.load(), 2500));
+    void Promise.all([waitFonts(3000), platform]).then(() => this.scene.start('Menu'));
   }
 
   /** Склеиваем детали (SVG) в одну текстуру со сторонами-степенями двойки (ради мипмапов). */

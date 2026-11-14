@@ -1,3 +1,4 @@
+import { T, tx } from '../i18n';
 import type { AbilityDef, AbilityId } from './types';
 import { Axes, Flail, Perun, Spear, Stomp, Sword, Whistle } from './weapons';
 
@@ -16,119 +17,118 @@ const CRIT = {
 };
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
-const num = (v: number) => v.toLocaleString('ru-RU');
 
 export const ABILITIES: AbilityDef[] = [
   // ---------------- Оружие (ближний бой) ----------------
   {
     id: 'sword',
     kind: 'weapon',
-    name: 'Меч-кладенец',
+    name: T('Меч-кладенец', 'Kladenets Sword'),
     icon: 'icon-sword',
     maxLevel: 6,
     desc: [
-      'Широкий взмах по ближайшему врагу',
-      'Урон +4',
-      'Замах шире и дальше',
-      'Замах быстрее',
-      'Обратный взмах: бьёт и за спиной',
-      'Урон +25%, замах ещё быстрее',
+      T('Широкий взмах по ближайшему врагу', 'A wide swing at the nearest foe'),
+      T('Урон +4', 'Damage +4'),
+      T('Замах шире и дальше', 'Wider, longer swing'),
+      T('Замах быстрее', 'Faster swings'),
+      T('Обратный взмах: бьёт и за спиной', 'Backswing: also hits behind you'),
+      T('Урон +25%, замах ещё быстрее', 'Damage +25%, even faster swings'),
     ],
     create: (g) => new Sword(g),
   },
   {
     id: 'axes',
     kind: 'weapon',
-    name: 'Вихрь секир',
+    name: T('Вихрь секир', 'Axe Whirlwind'),
     icon: 'icon-axes',
     maxLevel: 6,
     desc: [
-      'Секира кружит вокруг богатыря',
-      'Вторая секира',
-      'Больше урон и радиус',
-      'Третья секира',
-      'Кружат быстрее и бьют сильнее',
-      'Четвёртая секира',
+      T('Секира кружит вокруг богатыря', 'An axe circles around the hero'),
+      T('Вторая секира', 'Second axe'),
+      T('Больше урон и радиус', 'More damage and radius'),
+      T('Третья секира', 'Third axe'),
+      T('Кружат быстрее и бьют сильнее', 'Spin faster and hit harder'),
+      T('Четвёртая секира', 'Fourth axe'),
     ],
     create: (g) => new Axes(g),
   },
   {
     id: 'spear',
     kind: 'weapon',
-    name: 'Богатырское копьё',
+    name: T('Богатырское копьё', 'Hero\'s Spear'),
     icon: 'icon-spear',
     maxLevel: 6,
     desc: [
-      'Пронзающий выпад туда, куда идёшь',
-      'Больше урон и длина',
-      'Два копья веером',
-      'Выпад чаще',
-      'Три копья веером',
-      'Урон и длина: богатырские',
+      T('Пронзающий выпад туда, куда идёшь', 'A piercing thrust where you\'re heading'),
+      T('Больше урон и длина', 'More damage and reach'),
+      T('Два копья веером', 'Two spears in a fan'),
+      T('Выпад чаще', 'Thrusts more often'),
+      T('Три копья веером', 'Three spears in a fan'),
+      T('Урон и длина: богатырские', 'Heroic damage and reach'),
     ],
     create: (g) => new Spear(g),
   },
   {
     id: 'stomp',
     kind: 'weapon',
-    name: 'Богатырский топот',
+    name: T('Богатырский топот', 'Hero\'s Stomp'),
     icon: 'icon-stomp',
     maxLevel: 6,
     desc: [
-      'Удар оземь: урон и отбрасывание вокруг',
-      'Больше урон и радиус',
-      'Ещё больше радиус',
-      'Оглушённая нечисть замедляется',
-      'Топот чаще и сильнее',
-      'Земля ходуном: огромный радиус',
+      T('Удар оземь: урон и отбрасывание вокруг', 'Slam the ground: damage and knockback around you'),
+      T('Больше урон и радиус', 'More damage and radius'),
+      T('Ещё больше радиус', 'Even bigger radius'),
+      T('Оглушённая нечисть замедляется', 'Stunned monsters are slowed'),
+      T('Топот чаще и сильнее', 'Stomps more often and harder'),
+      T('Земля ходуном: огромный радиус', 'Earthquake: huge radius'),
     ],
     create: (g) => new Stomp(g),
   },
   {
     id: 'flail',
     kind: 'weapon',
-    name: 'Кистень',
+    name: T('Кистень', 'Flail'),
     icon: 'icon-flail',
     maxLevel: 6,
     desc: [
-      'Гиря на цепи описывает широкий круг и раскидывает нечисть',
-      'Урон больше',
-      'Круг шире',
-      'Раскручивается чаще',
-      'Урон и круг больше',
-      'Две гири: второй круг вдогонку',
+      T('Гиря на цепи описывает широкий круг и раскидывает нечисть', 'A weight on a chain sweeps a wide circle, scattering monsters'),
+      T('Урон больше', 'More damage'),
+      T('Круг шире', 'Wider circle'),
+      T('Раскручивается чаще', 'Spins up more often'),
+      T('Урон и круг больше', 'More damage and a bigger circle'),
+      T('Две гири: второй круг вдогонку', 'Two weights: a second circle follows'),
     ],
     create: (g) => new Flail(g),
   },
   {
     id: 'whistle',
     kind: 'weapon',
-    name: 'Соловьиный свист',
+    name: T('Соловьиный свист', 'Nightingale Whistle'),
     icon: 'icon-whistle',
     maxLevel: 6,
     desc: [
-      'Свист сбивает с ног всех впереди: урон, отброс и замедление',
-      'Свистит дальше',
-      'Конус шире, урон больше',
-      'Свистит чаще',
-      'Дальше и сильнее',
-      'Свист-ураган: огромный конус',
+      T('Свист сбивает с ног всех впереди: урон, отброс и замедление', 'A whistle knocks down everyone ahead: damage, knockback and slow'),
+      T('Свистит дальше', 'Reaches farther'),
+      T('Конус шире, урон больше', 'Wider cone, more damage'),
+      T('Свистит чаще', 'Whistles more often'),
+      T('Дальше и сильнее', 'Farther and stronger'),
+      T('Свист-ураган: огромный конус', 'Hurricane whistle: huge cone'),
     ],
     create: (g) => new Whistle(g),
   },
   {
     id: 'perun',
     kind: 'weapon',
-    name: 'Гнев Перуна',
+    name: T('Гнев Перуна', 'Perun\'s Wrath'),
     icon: 'icon-perun',
     maxLevel: 6,
     desc: [
-      'Молния бьёт в нечисть рядом с богатырём',
-      'Урон больше',
-      'Две молнии',
-      'Бьёт чаще',
-      'Три молнии',
-      'Гроза: четыре молнии и оглушение',
+      T('Молния бьёт в нечисть рядом с богатырём', 'Lightning strikes monsters near the hero'),
+      T('Урон больше', 'More damage'),
+      T('Две молнии', 'Two bolts'),
+      T('Бьёт чаще', 'Strikes more often'),
+      T('Три молнии', 'Three bolts'),
+      T('Гроза: четыре молнии и оглушение', 'Thunderstorm: four bolts and a stun'),
     ],
     create: (g) => new Perun(g),
   },
@@ -137,32 +137,32 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'lifesteal',
     kind: 'passive',
-    name: 'Живая вода',
+    name: T('Живая вода', 'Water of Life'),
     icon: 'icon-lifesteal',
     maxLevel: 5,
-    desc: LIFESTEAL.map((v, i) => `${i === 0 ? 'Вампиризм: ' : 'Вампиризм '}${(v * 100).toLocaleString('ru-RU')}% урона лечит богатыря`),
+    desc: LIFESTEAL.map((v) => T(`Вампиризм: ${(v * 100).toLocaleString('ru-RU')}% урона лечит богатыря`, `Lifesteal: ${v * 100}% of damage heals the hero`)),
     apply: (s, l) => {
-      s.lifesteal = LIFESTEAL[l - 1];
+      s.lifesteal += LIFESTEAL[l - 1];
     },
   },
   {
     id: 'armor',
     kind: 'passive',
-    name: 'Кольчуга',
+    name: T('Кольчуга', 'Chainmail'),
     icon: 'icon-armor',
     maxLevel: 5,
-    desc: Array.from({ length: 5 }, (_, i) => `Получаемый урон −${(i + 1) * 8}%`),
+    desc: Array.from({ length: 5 }, (_, i) => T(`Получаемый урон −${(i + 1) * 8}%`, `Damage taken −${(i + 1) * 8}%`)),
     apply: (s, l) => {
-      s.armor = 0.08 * l;
+      s.armor += 0.08 * l;
     },
   },
   {
     id: 'vitality',
     kind: 'passive',
-    name: 'Богатырское здоровье',
+    name: T('Богатырское здоровье', 'Hero\'s Health'),
     icon: 'icon-vitality',
     maxLevel: 5,
-    desc: Array.from({ length: 5 }, () => '+20 к здоровью'),
+    desc: Array.from({ length: 5 }, () => T('+20 к здоровью', '+20 max health')),
     apply: (s, l) => {
       s.maxHp += 20 * l;
     },
@@ -170,13 +170,16 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'helix',
     kind: 'passive',
-    name: 'Круговерть',
+    name: T('Круговерть', 'Spinning Blade'),
     icon: 'icon-helix',
     maxLevel: 5,
     desc: HELIX.chance.map((c, i) =>
       i === 0
-        ? `Бьёшь сам или бьют тебя — шанс ${pct(c)} крутануться и посечь всех вокруг. Удар, на который ответил вихрем, не проходит. +10 к здоровью`
-        : `Шанс ${pct(c)}, урон ${HELIX.dmg[i]}, круг шире, +10 к здоровью`,
+        ? T(
+            `Бьёшь сам или бьют тебя — шанс ${pct(c)} крутануться и посечь всех вокруг. Удар, на который ответил вихрем, не проходит. +10 к здоровью`,
+            `When you hit or get hit — ${pct(c)} chance to spin and cut everyone around. A blow answered by a spin doesn't land. +10 health`,
+          )
+        : T(`Шанс ${pct(c)}, урон ${HELIX.dmg[i]}, круг шире, +10 к здоровью`, `Chance ${pct(c)}, damage ${HELIX.dmg[i]}, wider circle, +10 health`),
     ),
     apply: (s, l) => {
       s.helixChance = HELIX.chance[l - 1];
@@ -188,26 +191,26 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'crit',
     kind: 'passive',
-    name: 'Богатырская затрещина',
+    name: T('Богатырская затрещина', 'Mighty Smack'),
     icon: 'icon-crit',
     maxLevel: 5,
     desc: CRIT.chance.map((c, i) =>
       i === 0
-        ? `Шанс ${pct(c)} влепить так, что нечисть отлетает: урон ×${num(CRIT.mul[i])}`
-        : `Шанс ${pct(c)}, урон ×${num(CRIT.mul[i])}`,
+        ? T(`Шанс ${pct(c)} влепить так, что нечисть отлетает: урон ×${ru(CRIT.mul[i])}`, `${pct(c)} chance to hit so hard monsters fly off: damage ×${CRIT.mul[i]}`)
+        : T(`Шанс ${pct(c)}, урон ×${ru(CRIT.mul[i])}`, `Chance ${pct(c)}, damage ×${CRIT.mul[i]}`),
     ),
     apply: (s, l) => {
-      s.critChance = CRIT.chance[l - 1];
-      s.critMul = CRIT.mul[l - 1];
+      s.critChance += CRIT.chance[l - 1];
+      s.critMul = Math.max(s.critMul, CRIT.mul[l - 1]);
     },
   },
   {
     id: 'speed',
     kind: 'passive',
-    name: 'Сапоги-скороходы',
+    name: T('Сапоги-скороходы', 'Seven-League Boots'),
     icon: 'icon-speed',
     maxLevel: 5,
-    desc: Array.from({ length: 5 }, (_, i) => `Скорость бега +${(i + 1) * 10}%`),
+    desc: Array.from({ length: 5 }, (_, i) => T(`Скорость бега +${(i + 1) * 10}%`, `Move speed +${(i + 1) * 10}%`)),
     apply: (s, l) => {
       s.speed *= 1 + 0.1 * l;
     },
@@ -215,10 +218,10 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'might',
     kind: 'passive',
-    name: 'Сила богатырская',
+    name: T('Сила богатырская', 'Hero\'s Might'),
     icon: 'icon-might',
     maxLevel: 5,
-    desc: Array.from({ length: 5 }, (_, i) => `Урон всего оружия +${(i + 1) * 10}%`),
+    desc: Array.from({ length: 5 }, (_, i) => T(`Урон всего оружия +${(i + 1) * 10}%`, `All weapon damage +${(i + 1) * 10}%`)),
     apply: (s, l) => {
       s.might += 0.1 * l;
     },
@@ -226,10 +229,10 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'haste',
     kind: 'passive',
-    name: 'Удаль молодецкая',
+    name: T('Удаль молодецкая', 'Youthful Daring'),
     icon: 'icon-haste',
     maxLevel: 5,
-    desc: Array.from({ length: 5 }, (_, i) => `Удары чаще: перезарядка −${(i + 1) * 8}%`),
+    desc: Array.from({ length: 5 }, (_, i) => T(`Удары чаще: перезарядка −${(i + 1) * 8}%`, `Faster attacks: cooldowns −${(i + 1) * 8}%`)),
     apply: (s, l) => {
       s.haste *= 1 - 0.08 * l;
     },
@@ -237,10 +240,10 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'area',
     kind: 'passive',
-    name: 'Размах плеча',
+    name: T('Размах плеча', 'Broad Swing'),
     icon: 'icon-area',
     maxLevel: 5,
-    desc: Array.from({ length: 5 }, (_, i) => `Дальность и радиус ударов +${(i + 1) * 10}%`),
+    desc: Array.from({ length: 5 }, (_, i) => T(`Дальность и радиус ударов +${(i + 1) * 10}%`, `Attack reach and radius +${(i + 1) * 10}%`)),
     apply: (s, l) => {
       s.area += 0.1 * l;
     },
@@ -248,10 +251,10 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'block',
     kind: 'passive',
-    name: 'Щит Святогора',
+    name: T('Щит Святогора', 'Svyatogor\'s Shield'),
     icon: 'icon-block',
     maxLevel: 5,
-    desc: BLOCK.map((v, i) => (i === 0 ? `Шанс ${pct(v)} принять удар на щит и не получить урона` : `Шанс блока ${pct(v)}`)),
+    desc: BLOCK.map((v, i) => (i === 0 ? T(`Шанс ${pct(v)} принять удар на щит и не получить урона`, `${pct(v)} chance to block a blow and take no damage`) : T(`Шанс блока ${pct(v)}`, `Block chance ${pct(v)}`))),
     apply: (s, l) => {
       s.blockChance = BLOCK[l - 1];
     },
@@ -259,10 +262,10 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'mead',
     kind: 'passive',
-    name: 'Медовуха',
+    name: T('Медовуха', 'Mead'),
     icon: 'icon-mead',
     maxLevel: 5,
-    desc: MEAD.map((v) => `Опыт за нечисть +${pct(v)}`),
+    desc: MEAD.map((v) => T(`Опыт за нечисть +${pct(v)}`, `XP from monsters +${pct(v)}`)),
     apply: (s, l) => {
       s.xpMul += MEAD[l - 1];
     },
@@ -270,10 +273,10 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'amulet',
     kind: 'passive',
-    name: 'Оберег',
+    name: T('Оберег', 'Ward Charm'),
     icon: 'icon-amulet',
     maxLevel: 5,
-    desc: AMULET_REGEN.map((v, i) => `${i === 0 ? 'Понемногу лечит' : 'Лечит'}: ${num(v)} здоровья в секунду`),
+    desc: AMULET_REGEN.map((v, i) => T(`${i === 0 ? 'Понемногу лечит' : 'Лечит'}: ${ru(v)} здоровья в секунду`, `${i === 0 ? 'Slowly heals' : 'Heals'} ${v} health per second`)),
     apply: (s, l) => {
       s.regen += AMULET_REGEN[l - 1];
     },
@@ -283,15 +286,21 @@ export const ABILITIES: AbilityDef[] = [
   {
     id: 'pie',
     kind: 'consumable',
-    name: 'Пирожок с капустой',
+    name: T('Пирожок с капустой', 'Cabbage Pie'),
     icon: 'icon-pie',
     maxLevel: Infinity,
-    desc: ['Восстанавливает 30% здоровья'],
+    desc: [T('Восстанавливает 30% здоровья', 'Restores 30% health')],
   },
 ];
 
 export const ABILITY_BY_ID = new Map<AbilityId, AbilityDef>(ABILITIES.map((a) => [a.id, a]));
 
 export function abilityDesc(def: AbilityDef, nextLevel: number): string {
-  return def.desc[Math.min(nextLevel, def.desc.length) - 1] ?? '';
+  const d = def.desc[Math.min(nextLevel, def.desc.length) - 1];
+  return d ? tx(d) : '';
+}
+
+/** Число по-русски (дробная запятая) — для русских описаний. */
+function ru(v: number): string {
+  return v.toLocaleString('ru-RU');
 }

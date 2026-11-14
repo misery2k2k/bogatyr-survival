@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { Enemy, EnemyKind } from './Enemy';
+import { T } from '../i18n';
 import { HeroRig, TUGARIN_SKIN } from './HeroRig';
 
 /** Детали змея: viewBox SVG (0,0 — шарнир). BootScene пакует их в текстуру 'dragon'. */
@@ -14,7 +15,7 @@ export const dragonTex = { res: 1 };
 
 export const DRAGON = {
   key: 'dragon',
-  name: 'Змей Горыныч',
+  name: T('Змей Горыныч', 'Zmey Gorynych'),
   hp: 900,
   speed: 36,
   damage: 24,
@@ -36,7 +37,7 @@ export const DRAGON = {
   /** Огненное кольцо вокруг себя, если богатырь подошёл вплотную. */
   ringRadius: 190,
   ringDmg: 22,
-} satisfies EnemyKind & Record<string, number | string>;
+} satisfies EnemyKind & Record<string, unknown>;
 
 const RAD = Phaser.Math.DegToRad;
 
@@ -108,7 +109,7 @@ export class Dragon extends Phaser.GameObjects.Container implements Enemy {
     this.fused = fused;
     this.baseScale = DRAGON.scale * (fused ? 1.22 : 1) * (look.scale ?? 1);
     this.bodyTint = look.tint ?? (fused ? 0xc8949a : 0xffffff);
-    if (fused) this.ztype = { ...DRAGON, name: 'Тугаро-Горыныч', xp: 140 };
+    if (fused) this.ztype = { ...DRAGON, name: T('Тугаро-Горыныч', 'Tugaro-Gorynych'), xp: 140 };
     const part = (p: DragonPart, tint = 0xffffff) => {
       const vb = DRAGON_PARTS[p];
       const im = scene.add.image(0, 0, 'dragon', p).setOrigin(-vb[0] / vb[2], -vb[1] / vb[3]).setScale(1 / dragonTex.res);

@@ -1,6 +1,7 @@
 import { TEX_RES } from './config';
 import { DECOR_RES } from './gen/assets';
 import type { BossKind } from './bosses';
+import { T, type Text } from './i18n';
 import { FOREST_DECOR, type DecorKind } from './systems/Decor';
 
 export type { BossKind };
@@ -9,7 +10,7 @@ export type { BossKind };
 export interface BiomeDef {
   id: 'forest' | 'cursed' | 'scorched' | 'frozen' | 'hell' | 'hell2';
   /** Заголовок при входе. */
-  title: string;
+  title: Text;
   /** Текстура земли (бесшовная), её оттенок и масштаб (мировых px на пиксель текстуры). */
   ground: string;
   groundTint: number;
@@ -116,10 +117,18 @@ const HELL2_DECOR: DecorKind[] = [
 
 const COMMON = ['mobs-common', 'decor'];
 
+/**
+ * Старт с поздней главы (выбор в меню): богатырь приходит подготовленным — примерно таким, каким дошёл бы сам
+ * (уровень и число предметов к началу главы; оценка по симуляции обычного забега).
+ */
+export const START_LEVEL = [1, 24, 33, 40, 46, 52];
+// по 7 случайных предметов за каждую пропущенную главу (всего предметов 20)
+export const START_ITEMS = [0, 7, 14, 20, 20, 20];
+
 export const BIOMES: BiomeDef[] = [
   {
     id: 'forest',
-    title: 'Глава I. Дремучий лес',
+    title: T('Глава I. Дремучий лес', 'Chapter I. The Deep Forest'),
     ground: 'ground',
     groundTint: 0xffffff,
     groundScale: 1 / TEX_RES,
@@ -139,7 +148,7 @@ export const BIOMES: BiomeDef[] = [
   },
   {
     id: 'cursed',
-    title: 'Глава II. Темнолесье',
+    title: T('Глава II. Темнолесье', 'Chapter II. The Darkwood'),
     ground: 'ground-cursed',
     groundTint: 0xffffff,
     groundScale: 0.62,
@@ -151,7 +160,7 @@ export const BIOMES: BiomeDef[] = [
       { key: 'skel', weight: 6 },
       { key: 'walker', weight: 3 },
       { key: 'upyr', weight: 3, from: 20 },
-      { key: 'archer', weight: 2.2, from: 45 },
+      { key: 'archer', weight: 1.2, from: 45 },
       { key: 'brute', weight: 1.2, from: 90 },
     ],
     horde: ['skel', 'brute'],
@@ -160,7 +169,7 @@ export const BIOMES: BiomeDef[] = [
   },
   {
     id: 'scorched',
-    title: 'Глава III. Выжженная земля',
+    title: T('Глава III. Выжженная земля', 'Chapter III. The Scorched Land'),
     ground: 'ground-scorched',
     groundTint: 0xffffff,
     groundScale: 0.62,
@@ -172,7 +181,7 @@ export const BIOMES: BiomeDef[] = [
       { key: 'razboinik', weight: 6 },
       { key: 'wolf', weight: 3.5 },
       { key: 'upyr', weight: 2 },
-      { key: 'mage', weight: 1.8, from: 40 },
+      { key: 'mage', weight: 1.0, from: 40 },
       { key: 'charbrute', weight: 1.3, from: 90 },
     ],
     horde: ['razboinik', 'charbrute'],
@@ -181,7 +190,7 @@ export const BIOMES: BiomeDef[] = [
   },
   {
     id: 'frozen',
-    title: 'Глава IV. Лютые морозы',
+    title: T('Глава IV. Лютые морозы', 'Chapter IV. The Bitter Frost'),
     ground: 'ground-frozen',
     groundTint: 0xffffff,
     groundScale: 0.62,
@@ -194,7 +203,7 @@ export const BIOMES: BiomeDef[] = [
       { key: 'navka', weight: 4 },
       { key: 'strazh', weight: 3, from: 30 },
       { key: 'snowwolf', weight: 2, from: 60 },
-      { key: 'icearcher', weight: 2, from: 40 },
+      { key: 'icearcher', weight: 1.1, from: 40 },
       { key: 'frostbrute', weight: 1.3, from: 90 },
     ],
     horde: ['frostwalker', 'frostbrute'],
@@ -203,7 +212,7 @@ export const BIOMES: BiomeDef[] = [
   },
   {
     id: 'hell',
-    title: 'Глава V. Пекло',
+    title: T('Глава V. Пекло', 'Chapter V. Hell'),
     ground: 'ground-hell',
     groundTint: 0xffffff,
     groundScale: 0.62,
@@ -215,7 +224,7 @@ export const BIOMES: BiomeDef[] = [
       { key: 'imp', weight: 6 },
       { key: 'chortik', weight: 3.5 },
       { key: 'dusha', weight: 2, from: 30 },
-      { key: 'ogon', weight: 2.2, from: 20 },
+      { key: 'ogon', weight: 1.2, from: 20 },
       { key: 'rogach', weight: 1.3, from: 60 },
     ],
     horde: ['imp', 'rogach'],
@@ -224,7 +233,7 @@ export const BIOMES: BiomeDef[] = [
   },
   {
     id: 'hell2',
-    title: 'Глава VI. Дно Пекла',
+    title: T('Глава VI. Дно Пекла', 'Chapter VI. The Bottom of Hell'),
     ground: 'ground-hell2',
     groundTint: 0xffffff,
     groundScale: 0.62,
@@ -237,7 +246,7 @@ export const BIOMES: BiomeDef[] = [
       { key: 'imp', weight: 3.5 },
       { key: 'chortik', weight: 3 },
       { key: 'upyr', weight: 2 },
-      { key: 'navi', weight: 2.5 },
+      { key: 'navi', weight: 1.3 },
       { key: 'rogach', weight: 1.6, from: 40 },
     ],
     horde: ['dusha', 'rogach'],

@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:cg": "vite --mode crazygames",
     "build": "tsc --noEmit && vite build",
+    "build:cg": "tsc --noEmit && vite build --mode crazygames",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "assets": "node tools/build-assets.mjs",
-    "pack": "npm run build && node tools/pack.mjs"
+    "pack": "npm run build && node tools/pack.mjs",
+    "pack:cg": "npm run build:cg && node tools/pack.mjs dist-cg bogatyr-crazygames.zip"
   },
   "dependencies": {
     "phaser": "^4.2.1"

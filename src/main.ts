@@ -8,9 +8,14 @@ import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { MenuScene } from './scenes/MenuScene';
 import { UIScene } from './scenes/UIScene';
-import { Yandex } from './yandex';
+import { Platform } from './platform';
+import { getLang, t } from './i18n';
 
-void Yandex.init();
+// площадка подключается сразу; язык известен после неё — подписываем вкладку на нём
+void Platform.init().then(() => {
+  document.documentElement.lang = getLang();
+  document.title = t('doc.title');
+});
 
 // Рисуем в физических пикселях (чётко на телефонах), а CSS-размер canvas = размер окна.
 const size = () => ({ w: Math.round(window.innerWidth * DPR), h: Math.round(window.innerHeight * DPR) });
@@ -31,6 +36,17 @@ const game = new Phaser.Game({
   input: { activePointers: 2 },
   scene: [BootScene, MenuScene, GameScene, UIScene],
 });
+
+// звук глушится на время рекламы и по настройке площадки
+Platform.bindSound(game.sound);
+
+// iOS может «уронить» звук (звонок, сворачивание) — поднимаем его по первому же касанию
+const resumeAudio = () => {
+  const ctx = (game.sound as unknown as { context?: AudioContext }).context;
+  if (ctx && ctx.state === 'suspended') void ctx.resume();
+};
+window.addEventListener('pointerup', resumeAudio);
+window.addEventListener('touchend', resumeAudio);
 
 window.addEventListener('resize', () => {
   const { w, h } = size();

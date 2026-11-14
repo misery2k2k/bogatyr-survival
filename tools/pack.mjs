@@ -1,15 +1,17 @@
-// Упаковывает dist/ в bogatyr-yandex.zip (index.html в корне, пути через "/").
+// Упаковывает сборку в zip (index.html в корне, пути через "/").
+// node tools/pack.mjs                                   — dist/ → bogatyr-yandex.zip
+// node tools/pack.mjs dist-cg bogatyr-crazygames.zip    — сборка для CrazyGames
 // Свой мини-zip, потому что Compress-Archive в PowerShell 5.1 пишет пути с "\".
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
 const root = path.resolve(import.meta.dirname, '..');
-const dist = path.join(root, 'dist');
-const outFile = path.join(root, 'bogatyr-yandex.zip');
+const dist = path.join(root, process.argv[2] ?? 'dist');
+const outFile = path.join(root, process.argv[3] ?? 'bogatyr-yandex.zip');
 
 if (!fs.existsSync(path.join(dist, 'index.html'))) {
-  console.error('dist/index.html не найден — сначала npm run build');
+  console.error(path.relative(root, dist) + '/index.html не найден — сначала соберите игру');
   process.exit(1);
 }
 
